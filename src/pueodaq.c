@@ -1,10 +1,16 @@
 #include "turfeth.h" 
 #include <arpa/inet.h>
-#include <netin/ip.h>
+#include <netinet/ip.h>
+#include <linux/netlink.h>
+#include <linux/rtnetlink.h>
 #include <net/if.h>
 #include <sys/ioctl.h> 
 #include <stdio.h> 
+#include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
 
+#include "pueodaq.h" 
 
 typedef enum
 {
@@ -31,6 +37,7 @@ typedef enum
 
 
 
+#define FRAGMENT_MAP_SZ 16 
 //event buffer implementation 
 struct event_buf  
 {
@@ -48,7 +55,7 @@ struct event_buf
 
   //bitmap of received fragments, up to maximum number of fragments
   //this is not in a standard order due to the way the way fragments are split amongst threads to avoid false sharing
-  volatile uint64_t fragment_map[16]; 
+  volatile uint64_t fragment_map[FRAGMENT_MAP_SZ]; 
 
   //flexible array member! 
   uint8_t bytes[];
@@ -58,13 +65,13 @@ struct turf_tx_ctx
 {
   int sock; 
   struct sockaddr addr; 
-}
+}; 
 
+
+#define DFLT_RECV_THREADS 4 
 struct pueo_daq
 {
-  pueo_daq_config_t cfg; //The configuration, copied in
-
-
+  pueo_daq_config_t cfg; //The configuration, copied in (with default values populated i necessary)
   //networking stuff
   struct 
   {
@@ -95,11 +102,14 @@ static inline struct event_buf * event_buf_get(pueo_daq_t * daq, int i)
 int event_buf_reset(struct event_buf * evbuf) 
 {
   evbuf->nfragments_expected = 0;
-  evbuf->nfragments_rcved = 0;
+  evbuf->nfragments_rcvd = 0;
   evbuf->nbytes_expected = 0;
-  evbuf->fragment_map = {0};
+  for (int i = 0; i < FRAGMENT_MAP_SZ; i++) evbuf->fragment_map[i] = 0; 
   // we can leave bytes alone... 
 }
+
+
+
 
 
 int pueo_daq_config_validate(const pueo_daq_config_t *cfg, FILE * out) 
@@ -107,9 +117,21 @@ int pueo_daq_config_validate(const pueo_daq_config_t *cfg, FILE * out)
 
   // Verify the network configuration is sane... 
   // Open a netlink socket
-  int sock = socket(AF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE); 
+  int sock = ntlink_sock(); 
+
+  // get the route for the turf
+
+  char routed_ifname[IFNAMSIZ] = {0}; 
+  char routed_gw[16] = {0}; 
+  get_route_for_addr(cfg.turf_ip_addr, routed_ifname, routed_gw); 
+
+  if (cfg->eth_device && strcmp(cfg->eth_device, routed_ifname))
+  {
+    fprintf(out,"The kernel is routing the TURF IP (%s) to %s, but you specified the device %s. Trying to change route...\n", cfg.turf_ip_addr, routed_ifname, cfg->eth_device); 
+  }
+
   struct ifreq ifr; 
-  strncpy(ifr.ifr_name, cfg->eth, IFNAMSIZ); 
+  strncpy(ifr.ifr_name, cfg->eth_device, IFNAMSIZ); 
   int ret = 0; 
 
   //check the MTU 
@@ -150,7 +172,8 @@ end:
 
 static inline int next_page(int len) 
 {
-  const pgsize = 4096; 
+  static int pgsize = sysconf(_SC_PAGESIZE); 
+
   return ((pgsize-1) & len) ? ((len+pgsize) & ~(pgsize-1)) : len; 
 }
 
@@ -177,9 +200,14 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg = NULL)
     fprintf(stderr,"Could not allocate memory for pueo_daq_t!!!"); 
     return 0; 
   }
+
   
   //copy the config in 
   memcpy(daq->cfg, cfg, sizeof(pueo_daq_cfg)); 
+
+  //set some defaults in config if necessary
+  if (!daq->cfg.n_recvthreads) daq->cfg.n_recvthreads = DFLT_RECV_THREADS; 
+
 
   //set up buffers 
   daq->evbuf_sz = next_page(cfg.max_ev_size + sizeof(struct event_buf)); //round to page size 
@@ -248,7 +276,10 @@ void pueo_daq_destroy(pueo_daq_t * daq)
   close(daq->net.turf_ctl_sck); 
   close(daq->net.turf_ack_sck); 
   close(daq->net.turf_nck_sck); 
-  close(daq->net.turf_ev_sck); 
+  for (int i = 0; i < daq.cfg.n_recvthreads; i++) 
+  {
+    close(daq->net.turf_ev_sck[i]); 
+  }
   
   //deallocate buffers
   free(daq->evmem); 

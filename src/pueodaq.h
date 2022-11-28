@@ -78,9 +78,9 @@ typedef struct pueo_daq_config
   .max_ev_size = 64, \
   .n_recvthreads = 4, \
   .turf_ip_addr = "192.168.1.128",\
-  .turf_subnet_mask = "255.255.255.0",\
-  .eth_device = NULL
-}
+  .turf_subnet_mask ="255.255.255.0",\
+  .eth_device = NULL\
+};
 
 
 /* Opaque handle to DAQ*/ 
@@ -89,18 +89,22 @@ typedef struct pueo_daq pueo_daq_t;
 /** Validate the configuration */ 
 int pueo_daq_config_validate(const pueo_daq_config_t * cfg, FILE* outbuf); 
 
-/** Initialize a pueo_daq_t instance, default configuration used if no cfg */
-pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg = NULL); 
+/** Initialize a pueo_daq_t instance, default configuration used if cfg  is NULL*/
+pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg); 
+
+#define pueo_daq_default_init() pueo_daq_init(NULL) 
 
 void pueo_daq_destroy(pueo_daq_t* daq); 
 
 /** Dump debug info to stream */ 
 int pueo_daq_dump(pueo_daq_t * daq, FILE * stream, int flags); 
 
+
+
 /** Returns the number of complete events ready */ 
 int pueo_daq_nready(pueo_daq_t * t) ; 
 
-int puoo_daq
+
 
 
 
