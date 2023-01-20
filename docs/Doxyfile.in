@@ -1,0 +1,9 @@
+INPUT                  = "@DOXY_IN@" 
+OUTPUT_DIRECTORY       = "@DOXY_OUTDIR@" 
+DOXYFILE_ENCODING      = UTF-8
+PROJECT_NAME           = "pueodaq"
+PROJECT_BRIEF          = "DAQ code for pueo" 
+EXTRACT_ALL            = YES
+OPTIMIZE_OUTPUT_FOR_C  = YES
+GENERATE_XML           = YES
+

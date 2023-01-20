@@ -11,6 +11,7 @@
 #include <unistd.h>
 
 #include "pueodaq.h" 
+#include "pueodaq-net.h" 
 
 typedef enum
 {
@@ -104,84 +105,33 @@ int event_buf_reset(struct event_buf * evbuf)
   evbuf->nfragments_expected = 0;
   evbuf->nfragments_rcvd = 0;
   evbuf->nbytes_expected = 0;
+
   for (int i = 0; i < FRAGMENT_MAP_SZ; i++) evbuf->fragment_map[i] = 0; 
   // we can leave bytes alone... 
+
+
+
+  return 0; 
 }
 
 
 
 
 
-int pueo_daq_config_validate(const pueo_daq_config_t *cfg, FILE * out) 
-{
-
-  // Verify the network configuration is sane... 
-  // Open a netlink socket
-  int sock = ntlink_sock(); 
-
-  // get the route for the turf
-
-  char routed_ifname[IFNAMSIZ] = {0}; 
-  char routed_gw[16] = {0}; 
-  get_route_for_addr(cfg.turf_ip_addr, routed_ifname, routed_gw); 
-
-  if (cfg->eth_device && strcmp(cfg->eth_device, routed_ifname))
-  {
-    fprintf(out,"The kernel is routing the TURF IP (%s) to %s, but you specified the device %s. Trying to change route...\n", cfg.turf_ip_addr, routed_ifname, cfg->eth_device); 
-  }
-
-  struct ifreq ifr; 
-  strncpy(ifr.ifr_name, cfg->eth_device, IFNAMSIZ); 
-  int ret = 0; 
-
-  //check the MTU 
-  if (ioctl(sock, SIOCGIFMTU, &ifr) )
-  {
-    if (out) fprintf(out,"Could not query MTU (is %s a real device?)!!!\n", cfg->eth); 
-    ret = -1; 
-    goto end: 
-
-  }
-  if (ifr.ifr_mtu < cfg->fragment_size + 8) 
-  {
-    if (out) 
-    {
-      fprintf(out, "MTU of %d too small for fragment size of %d, trying to increase\n", ifr.ifr_mtu, fragment_size); 
-    }
-
-    //I suppose we could try to change it? 
-    ifr.ifr_mtu = cfg->fragment_size+8; 
-    if (ioctl(sock, SIOCSIFMTU, &ifr))
-    {
-      if (out) fprintf(out, "Could not set MTU to %d", ifr.ifr_mtu); 
-      ret = -1; 
-      goto end; 
-    }
-  }
-
-  // TODO check that the device has an ip on the same subnet as the turf? 
-  
-  // TODO check route? 
-
-
-
-end: 
-  close(sock); 
-  return ret 
-}
 
 static inline int next_page(int len) 
 {
-  static int pgsize = sysconf(_SC_PAGESIZE); 
+  static int pgsize; 
+  if (!pgsize) pgsize = sysconf(_SC_PAGESIZE); 
 
   return ((pgsize-1) & len) ? ((len+pgsize) & ~(pgsize-1)) : len; 
 }
 
 
-static pueo_daq_config_t default_config = PUEO_DAQ_CONFIG_DFLT; 
+static pueo_daq_config_t default_config = { PUEO_DAQ_CONFIG_DFLT } ; 
 
 
-pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg = NULL) 
+pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg) 
 {
   if (!cfg) 
   {
@@ -203,14 +153,14 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg = NULL)
 
   
   //copy the config in 
-  memcpy(daq->cfg, cfg, sizeof(pueo_daq_cfg)); 
+  memcpy(&daq->cfg, cfg, sizeof(pueo_daq_config_t)); 
 
   //set some defaults in config if necessary
   if (!daq->cfg.n_recvthreads) daq->cfg.n_recvthreads = DFLT_RECV_THREADS; 
 
 
   //set up buffers 
-  daq->evbuf_sz = next_page(cfg.max_ev_size + sizeof(struct event_buf)); //round to page size 
+  daq->evbuf_sz = next_page(daq->cfg.max_ev_size + sizeof(struct event_buf)); //round to page size 
 
   daq->evmem = calloc(daq->cfg.n_event_bufs, daq->evbuf_sz); 
   if (!daq->evmem) 
@@ -220,11 +170,12 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg = NULL)
   }
 
   //set addresses 
-  for (int i = 0; i < daq->evbuf_N; i++) 
+  for (int i = 0; i < daq->evbuf_sz; i++) 
   {
-    event_buf_get(daq, i)->addr = i; 
+    event_buf_get(daq, i)->address = i; 
   }
                                                                         
+
   // set turf address/mask 
 
   if (!inet_aton(cfg->turf_ip_addr, &daq->net.turf_ip))
@@ -234,6 +185,7 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg = NULL)
   }
 
   if (!inet_aton(cfg->turf_subnet_mask, &daq->net.turf_mask))
+  {
     fprintf(stderr, "Could not interpret %s as an IPV4 mask\n", cfg->turf_subnet_mask);
     goto bail; 
   }
@@ -241,20 +193,31 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg = NULL)
 
   // open UDP sockets 
 
-  daq->net.turf_wr_sck = socket(AF_INET, SOCK_DGRAM, 0); 
-  daq->net.turf_rd_sck = socket(AF_INET, SOCK_DGRAM, 0); 
-  daq->net.turf_ctl_sck = socket(AF_INET, SOCK_DGRAM, 0); 
-  daq->net.turf_ack_sck = socket(AF_INET, SOCK_DGRAM, 0); 
-  daq->net.turf_nck_sck = socket(AF_INET, SOCK_DGRAM, 0); 
-  daq->net.turf_ev_sck = socket(AF_INET, SOCK_DGRAM, 0); 
+  daq->net.turf_wr_sck = socket(AF_INET, SOCK_DGRAM, 0);
+  daq->net.turf_rd_sck = socket(AF_INET, SOCK_DGRAM, 0);
+  daq->net.turf_ctl_sck = socket(AF_INET, SOCK_DGRAM, 0);
+  daq->net.turf_ack_sck = socket(AF_INET, SOCK_DGRAM, 0);
+  daq->net.turf_nck_sck = socket(AF_INET, SOCK_DGRAM, 0);
+
 
   //verify that they all opened... 
  
-  if (daq->net.turf_wr_sck < 0 || daq->net_turf.rd_sck < 0  || daq->net.turf_ctl_sck < 0 
-      || daq->net.turf_ack_sck  < 0|| daq->net.turf.nck_sck < 0 || daq->net.turf_ev_sck < 0 )
+  if (daq->net.turf_wr_sck < 0 || daq->net.turf_rd_sck < 0  || daq->net.turf_ctl_sck < 0 
+      || daq->net.turf_ack_sck  < 0|| daq->net.turf_nck_sck < 0 )
   {
     fprintf(stderr,"Couldn't open sockets..."); 
-    goto bail; 
+    goto bail;
+  }
+
+
+  for (int ith = 0; ith < daq->cfg.n_recvthreads; ith++) 
+  {
+    daq->net.turf_ev_sck[ith] = socket(AF_INET, SOCK_DGRAM, 0); 
+    if (daq->net.turf_ev_sck[ith] < 0)
+    {
+      fprintf(stderr,"Couldn't open sockets..."); 
+      goto bail;
+    }
   }
 
   return daq; 
@@ -276,7 +239,7 @@ void pueo_daq_destroy(pueo_daq_t * daq)
   close(daq->net.turf_ctl_sck); 
   close(daq->net.turf_ack_sck); 
   close(daq->net.turf_nck_sck); 
-  for (int i = 0; i < daq.cfg.n_recvthreads; i++) 
+  for (int i = 0; i < daq->cfg.n_recvthreads; i++) 
   {
     close(daq->net.turf_ev_sck[i]); 
   }
@@ -287,6 +250,7 @@ void pueo_daq_destroy(pueo_daq_t * daq)
   //deallocate the daq 
   free(daq); 
 }
+
 
 
 

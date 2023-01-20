@@ -33,6 +33,7 @@
 *
 */
 
+
 #include <stdint.h> 
 #include <stdio.h> 
 
@@ -42,37 +43,29 @@
  **/ 
 typedef struct pueo_daq_config 
 {
-  /** Fragment size used for reading, MTU must be a bit bigger */ 
-  uint16_t fragment_size; 
+  uint16_t fragment_size; /// Fragment size used for reading, MTU must be a bit bigger  
 
-  /** Number of simultaneous events possible
-   * in flight*/ 
-  uint16_t n_event_bufs; 
+  uint16_t n_event_bufs; /// Number of simultaneous events possible in flight
 
-  /** Maximum event size */ 
-  uint32_t  max_ev_size; 
+  uint32_t  max_ev_size; /// Maximum event size  
 
-  /** Number of receiver threads, use 0 to use some default. 
-   *  Maximum is probably 16. 
-   **/
-  uint8_t n_recvthreads; 
+  uint8_t n_recvthreads; /// Number of receiver threads, use 0 to use some default. Maximum is probably 16. 
 
-  /** TURF IP Address */
-  const char * turf_ip_addr; 
+  const char * turf_ip_addr;   /// TURF IP Address 
 
-  /** TURF Subnet Mask */ 
-  const char * turf_subnet_mask; 
+  const char * turf_subnet_mask; /// TURF Subnet Mask
 
-  /** Ethernet device, NULL to try to infer from TURF IP Address (is this actually needed, or do we just let the kernel route?*/
-  const char * eth_device; 
+  const char * eth_device; /// Ethernet device, NULL to try to infer from TURF IP Address
 
 } pueo_daq_config_t; 
 
 
-// default configuration for pueo_daq_config, can do e.g. 
-// pueo_daq_config_t cfg = PUEO_DAQ_CONFIG_DFLT;  
+/**  default configuration for pueo_daq_config, can do e.g. 
+/ pueo_daq_config_t cfg =  { PUEO_DAQ_CONFIG_DFLT }; 
+/ you can override anything afterwards if you want to, like 
+/ pueo_daq_config_t cfg =  { PUEO_DAQ_CONFIG_DFLT, .fragment_size = 16384}; 
+*/ 
 #define PUEO_DAQ_CONFIG_DFLT \
-{\
   .fragment_size = 8192, \
   .n_event_bufs = 64, \
   .max_ev_size = 64, \
@@ -80,28 +73,47 @@ typedef struct pueo_daq_config
   .turf_ip_addr = "192.168.1.128",\
   .turf_subnet_mask ="255.255.255.0",\
   .eth_device = NULL\
-};
 
 
-/* Opaque handle to DAQ*/ 
+/** Opaque handle to DAQ*/ 
 typedef struct pueo_daq pueo_daq_t; 
 
-/** Validate the configuration */ 
+/** Validate the configuration 
+ * @param cfg the configuration to validate
+ * @param outbuf where to write output to (e.g. stdout, stderr) 
+ * @returns 0 on success
+ * */ 
 int pueo_daq_config_validate(const pueo_daq_config_t * cfg, FILE* outbuf); 
 
-/** Initialize a pueo_daq_t instance, default configuration used if cfg  is NULL*/
+/** Initialize a pueo_daq_t instance
+ * @param cfg the configuration. The default is used if NULL. 
+ * @returns an opaque handle to the daq, or NULL if something failed. 
+ * */
 pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg); 
 
+/** convenience wrapper  */ 
 #define pueo_daq_default_init() pueo_daq_init(NULL) 
 
+/** Uninitialize the DAQ 
+ * @param daq the DAQ handle
+ * */ 
 void pueo_daq_destroy(pueo_daq_t* daq); 
 
-/** Dump debug info to stream */ 
+/** Dump debug info to stream 
+ *
+ * @param daq the DAQ handle
+ * @param stream a FILE to write to (e.g. stdout) 
+ * @param flags TBD 
+ * @returns number of bytes written
+ * */ 
 int pueo_daq_dump(pueo_daq_t * daq, FILE * stream, int flags); 
 
 
 
-/** Returns the number of complete events ready */ 
+/** Returns the number of complete events ready 
+ * @param daq the DAQ handle
+ * @returns number of complete events ready to be read
+ * */ 
 int pueo_daq_nready(pueo_daq_t * t) ; 
 
 
