@@ -1,3 +1,5 @@
+#define _GNU_SOURCE 
+
 #include "turfeth.h" 
 #include <arpa/inet.h>
 #include <netinet/ip.h>
@@ -9,18 +11,21 @@
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <pthread.h>
+#include <poll.h> 
 
 #include "pueodaq.h" 
 #include "pueodaq-net.h" 
 
 typedef enum
 {
-  TURF_PORT_READ_REQ = 21618, 
-  TURF_PORT_WRITE_REQ = 21623, 
-  TURF_PORT_CTL_REQ = 21603, 
-  TURF_PORT_ACK = 21601, 
-  TURF_PORT_NACK = 21614, 
-  TURF_PORT_EVENT = 21605 
+  TURF_PORT_READ_REQ = 0x5472, 
+  TURF_PORT_WRITE_REQ = 0x5477, 
+  TURF_PORT_CTL_REQ = 0x5463, 
+  TURF_PORT_ACK = 0x5461, 
+  TURF_PORT_NACK = 0x546e, 
+  TURF_PORT_FRAGMENT_MIN = 0x5400, 
+  TURF_PORT_FRAGMENT_MAX = 0x543f 
 } e_turf_ports; 
 
 
@@ -32,13 +37,13 @@ typedef enum
 
 typedef enum 
 {
-  DAQ_MAX_READER_THREADS = 16 
+  DAQ_MAX_READER_THREADS = 64 
 
 }e_daq_limits; 
 
 
 
-#define FRAGMENT_MAP_SZ 16 
+#define FRAGMENT_MAP_SZ 64 
 //event buffer implementation 
 struct event_buf  
 {
@@ -49,14 +54,15 @@ struct event_buf
   uint16_t nfragments_expected; 
 
   //number of fragments received
-  uint16_t nfragments_rcvd;
+  _Atomic uint16_t nfragments_rcvd;
 
   //number of bytes expected
   uint32_t nbytes_expected; 
 
   //bitmap of received fragments, up to maximum number of fragments
   //this is not in a standard order due to the way the way fragments are split amongst threads to avoid false sharing
-  volatile uint64_t fragment_map[FRAGMENT_MAP_SZ]; 
+  // the ith fragment goes to  (i % nrecv_threads) 
+  volatile uint16_t fragment_map[FRAGMENT_MAP_SZ]; 
 
   //flexible array member! 
   uint8_t bytes[];
@@ -79,18 +85,39 @@ struct pueo_daq
     struct in_addr turf_ip;
     struct in_addr turf_mask;
 
-    int turf_ev_sck[DAQ_MAX_READER_THREADS]; 
+    pthread_mutex_t tx_lock;
+    struct sockaddr_in wr_address; 
+    struct sockaddr_in rd_address; 
 
-    int turf_wr_sck;
-    int turf_rd_sck;
-    int turf_ctl_sck; 
-    int turf_ack_sck;
-    int turf_nck_sck;
+    uint8_t wr_tag : 4; 
+    uint8_t rd_tag : 4; 
+
+
+    //port to send from daq to turf
+    int daq_tx_sck; 
+
+    // these are receiving ports on 
+    int daq_ctl_sck; 
+    int daq_frgctl_sck; 
+    int daq_frg_sck; 
+    
   } net; 
 
 
   int evbuf_sz; // padded to nearest page... so not the same as cfg.max_ev_size 
+
+  // the event buffer, may be internal or external... 
   uint8_t * evmem; 
+  uint8_t * evmem_internal; 
+  uint16_t n_event_bufs;  
+
+  enum 
+  {
+    PUEODAQ_UNINIT,
+    PUEODAQ_IDLE,
+    PUEODAQ_RUNNING,
+    PUEODAQ_ERROR
+  } state; 
 }; 
 
 static inline struct event_buf * event_buf_get(pueo_daq_t * daq, int i)
@@ -100,7 +127,7 @@ static inline struct event_buf * event_buf_get(pueo_daq_t * daq, int i)
 
 
 
-int event_buf_reset(struct event_buf * evbuf) 
+static int event_buf_reset(struct event_buf * evbuf) 
 {
   evbuf->nfragments_expected = 0;
   evbuf->nfragments_rcvd = 0;
@@ -115,21 +142,80 @@ int event_buf_reset(struct event_buf * evbuf)
 }
 
 
-
-
+static int pgsiz; 
+__attribute__((constructor))
+static void set_pgsize()
+{
+  pgsiz = sysconf(_SC_PAGESIZE); 
+}
 
 
 static inline int next_page(int len) 
 {
-  static int pgsize; 
-  if (!pgsize) pgsize = sysconf(_SC_PAGESIZE); 
-
-  return ((pgsize-1) & len) ? ((len+pgsize) & ~(pgsize-1)) : len; 
+  return ((pgsiz-1) & len) ? ((len+pgsiz) & ~(pgsiz-1)) : len; 
 }
 
 
-static pueo_daq_config_t default_config = { PUEO_DAQ_CONFIG_DFLT } ; 
+static const pueo_daq_config_t default_config = { PUEO_DAQ_CONFIG_DFLT } ; 
 
+size_t pueo_daq_get_event_size(const pueo_daq_t * daq) 
+{
+  return daq->evbuf_sz; 
+}
+
+
+int pueo_daq_set_buffer(pueo_daq_t * daq, size_t nbytes, void * buf) 
+{
+  //allocate internal buffer
+  if (!nbytes || !buf) 
+  {
+    if (daq->cfg.n_event_bufs_to_alloc) 
+    {
+      daq->evmem_internal = calloc(daq->cfg.n_event_bufs_to_alloc, daq->evbuf_sz); 
+      if (!daq->evmem_internal) 
+      {
+        return -1; 
+      }
+
+      daq->evmem = daq->evmem_internal; 
+      daq->n_event_bufs = daq->cfg.n_event_bufs_to_alloc; 
+    }
+  }
+  else 
+  {
+    // calculate number of events 
+    size_t nevents = nbytes / daq->evbuf_sz; 
+    if (nevents > 65535) nevents = 65535; //  "only" support so many adresses.
+
+    //too small... 
+    if(!nevents) 
+    {
+      return -1; 
+    }
+
+    //otherwise we'll allow it 
+    
+    if (daq->evmem_internal) 
+    {
+      free(daq->evmem_internal);
+      daq->evmem_internal = 0; 
+    }
+
+
+    daq->evmem = buf; 
+    daq->n_event_bufs = nevents; 
+  }
+
+  //set addresses 
+  for (uint32_t i = 0; i < daq->n_event_bufs; i++) 
+  {
+    event_buf_get(daq, i)->address = i; 
+  }
+  
+  return 0; 
+
+
+} 
 
 pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg) 
 {
@@ -156,17 +242,17 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg)
   memcpy(&daq->cfg, cfg, sizeof(pueo_daq_config_t)); 
 
   //set some defaults in config if necessary
-  if (!daq->cfg.n_recvthreads) daq->cfg.n_recvthreads = DFLT_RECV_THREADS; 
+  if (!daq->cfg.n_recvthreads) daq->cfg.n_recvthreads = default_config.n_recvthreads; 
 
 
   //set up buffers 
   daq->evbuf_sz = next_page(daq->cfg.max_ev_size + sizeof(struct event_buf)); //round to page size 
 
-  daq->evmem = calloc(daq->cfg.n_event_bufs, daq->evbuf_sz); 
-  if (!daq->evmem) 
+  //allocate internal buffer (maybe) 
+  if (pueo_daq_set_buffer(daq, 0,0))
   {
-    fprintf(stderr, "Could not allocate memory for event buffers!!!\n"); 
-    goto bail; 
+      fprintf(stderr, "Could not allocate memory for event buffers!!!\n"); 
+      goto bail; 
   }
 
   //set addresses 
@@ -184,41 +270,44 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg)
     goto bail; 
   }
 
-  if (!inet_aton(cfg->turf_subnet_mask, &daq->net.turf_mask))
+  if (cfg->turf_subnet_len > 32)
   {
-    fprintf(stderr, "Could not interpret %s as an IPV4 mask\n", cfg->turf_subnet_mask);
+    fprintf(stderr, "Could not interpret /%u as an IPV4 subnet legnth\n", cfg->turf_subnet_len);
     goto bail; 
   }
   
 
   // open UDP sockets 
-
-  daq->net.turf_wr_sck = socket(AF_INET, SOCK_DGRAM, 0);
-  daq->net.turf_rd_sck = socket(AF_INET, SOCK_DGRAM, 0);
-  daq->net.turf_ctl_sck = socket(AF_INET, SOCK_DGRAM, 0);
-  daq->net.turf_ack_sck = socket(AF_INET, SOCK_DGRAM, 0);
-  daq->net.turf_nck_sck = socket(AF_INET, SOCK_DGRAM, 0);
-
-
-  //verify that they all opened... 
- 
-  if (daq->net.turf_wr_sck < 0 || daq->net.turf_rd_sck < 0  || daq->net.turf_ctl_sck < 0 
-      || daq->net.turf_ack_sck  < 0|| daq->net.turf_nck_sck < 0 )
-  {
-    fprintf(stderr,"Couldn't open sockets..."); 
-    goto bail;
-  }
+#define SETUP_SOCK(which,port,flags) \
+  do {\
+    daq->net.which = socket(AF_INET, SOCK_DGRAM, flags);\
+    if (daq->net.which < 0) { \
+      fprintf(stderr, "Couldn't open socket %s\n", #which); \
+      goto bail; \
+    }\
+    struct sockaddr_in addr = {.sin_family = AF_INET, .sin_port = port, .sin_addr = {.s_addr = htonl(INADDR_ANY)} }; \
+    if (bind(daq->net.which,(struct sockaddr*) &addr, sizeof(addr))) { \
+     fprintf (stderr,"Couldn't bind %s to %d\n", #which, port);\
+     goto bail; \
+    }\
+  } while(0)
 
 
-  for (int ith = 0; ith < daq->cfg.n_recvthreads; ith++) 
-  {
-    daq->net.turf_ev_sck[ith] = socket(AF_INET, SOCK_DGRAM, 0); 
-    if (daq->net.turf_ev_sck[ith] < 0)
-    {
-      fprintf(stderr,"Couldn't open sockets..."); 
-      goto bail;
-    }
-  }
+  SETUP_SOCK(daq_tx_sck, daq->cfg.daq_ports.tx_out,0); 
+  SETUP_SOCK(daq_ctl_sck, daq->cfg.daq_ports.control_in,0); 
+  SETUP_SOCK(daq_frgctl_sck, daq->cfg.daq_ports.fragcontrol_in,0); 
+  SETUP_SOCK(daq_frg_sck, daq->cfg.daq_ports.fragment_in,0); 
+
+
+  //set up dest addresses 
+
+  daq->net.wr_address = (struct sockaddr_in) {.sin_family = AF_INET, .sin_port = TURF_PORT_WRITE_REQ, .sin_addr = daq->net.turf_ip}; 
+  daq->net.rd_address = (struct sockaddr_in) {.sin_family = AF_INET, .sin_port = TURF_PORT_READ_REQ, .sin_addr = daq->net.turf_ip}; 
+
+  //set up locks 
+  pthread_mutex_init(&daq->net.tx_lock,0);
+
+  daq->state = PUEODAQ_IDLE; 
 
   return daq; 
 
@@ -234,23 +323,133 @@ void pueo_daq_destroy(pueo_daq_t * daq)
   if (!daq) return; 
 
   //close sockets 
-  close(daq->net.turf_wr_sck); 
-  close(daq->net.turf_rd_sck); 
-  close(daq->net.turf_ctl_sck); 
-  close(daq->net.turf_ack_sck); 
-  close(daq->net.turf_nck_sck); 
-  for (int i = 0; i < daq->cfg.n_recvthreads; i++) 
-  {
-    close(daq->net.turf_ev_sck[i]); 
-  }
-  
-  //deallocate buffers
-  free(daq->evmem); 
+  close(daq->net.daq_tx_sck); 
+  close(daq->net.daq_ctl_sck); 
+  close(daq->net.daq_frgctl_sck); 
+  close(daq->net.daq_frg_sck); 
+
+  //deallocate buffers, if they exis t
+  if (daq->evmem_internal) 
+    free(daq->evmem_internal); 
 
   //deallocate the daq 
   free(daq); 
 }
 
 
+struct blocking_wait_check
+{
+  uint16_t wanted_port; 
+  uint8_t wanted_tag; 
+  uint32_t wanted_addr; 
+  void *buf ; 
+  size_t len; 
+}; 
+
+struct addrtag_pair
+{
+  uint32_t addr:28; 
+  uint32_t tag:4; 
+}; 
+
+static int blocking_wait_for_response(pueo_daq_t * daq,  const struct blocking_wait_check * check)
+{
+  int sck = daq->net.daq_tx_sck; 
+  struct pollfd fd; 
+  fd.fd = sck; 
+  fd.events = POLLIN; 
+  int ready = ppoll (&fd, 1, &daq->cfg.timeout, NULL); 
+  if (!ready || !(fd.revents & POLLIN ))  return -1; 
+
+  //just wait, don't check 
+  if (!check) return 0; 
+
+  //otherwise read it into the buf and do the check 
+  struct  sockaddr_in  src;  
+  socklen_t srclen = sizeof(src); 
+
+  ssize_t r = recvfrom(sck, check->buf, check->len,0, &src, &srclen); 
+
+  //make sure we got something
+  if ( r <= 0) return -2; 
+
+  //check to make sure the packet came from the turf
+  if (src.sin_addr.s_addr != daq->net.turf_ip.s_addr) return -3; 
+
+  // if we have wanted port verification, check it 
+  if (check->wanted_port && src.sin_port != check->wanted_port) return -4; 
+
+  //check for tag mismatch
+  struct addrtag_pair * addrtag = (struct addrtag_pair *) check->buf; 
+  if (check->wanted_tag < 16 && addrtag->tag != check->wanted_tag) return -5; 
+  if (check->wanted_addr < 0xffffffff &&  addrtag->addr != check->wanted_addr) return -6; 
+
+  return 0; 
+}
+
+
+int pueo_daq_write(pueo_daq_t * daq, uint32_t wraddr, uint32_t data) 
+{
+  pthread_mutex_lock(&daq->net.tx_lock); 
+  uint8_t tag = daq->net.wr_tag++; 
+
+  turf_wrreq_t msg= {.BIT={.ADDR = wraddr & 0x0fffffff, .TAG = tag, .WRDATA = data}}; 
+  turf_wrresp_t resp; 
+
+  int success = 0;
+  for (unsigned attempt = 0; attempt < daq->cfg.max_attempts; attempt++) 
+  {
+    int sent = sendto(daq->net.daq_tx_sck, &msg, sizeof(msg), 0, &daq->net.wr_address, sizeof(daq->net.wr_address)); 
+    if (sent != sizeof(msg))
+    {
+      fprintf(stderr,"Sending problem?\n"); 
+      continue; 
+    }
+    struct blocking_wait_check chk = { .wanted_tag = tag, .wanted_addr = wraddr, .wanted_port = TURF_PORT_WRITE_REQ, .buf = &resp, .len = sizeof(resp)}; 
+
+    if (!blocking_wait_for_response(daq, &chk))
+    {
+      success = 1; 
+      break; 
+    }
+  }
+
+  pthread_mutex_unlock(&daq->net.tx_lock); 
+
+  return !success; 
+
+}
+
+int pueo_daq_read(pueo_daq_t * daq, uint32_t rdaddr, uint32_t *data) 
+{
+  pthread_mutex_lock(&daq->net.tx_lock); 
+  uint8_t tag = daq->net.rd_tag++; 
+
+  turf_rdreq_t msg= {.BIT={.ADDR = rdaddr & 0x0fffffff, .TAG = tag}}; 
+  turf_rdresp_t resp; 
+
+  int success = 0;
+  for (unsigned attempt = 0; attempt < daq->cfg.max_attempts; attempt++) 
+  {
+    int sent = sendto(daq->net.daq_tx_sck, &msg, sizeof(msg), 0, &daq->net.rd_address, sizeof(daq->net.rd_address)); 
+    if (sent != sizeof(msg))
+    {
+      fprintf(stderr,"Sending problem?\n"); 
+      continue; 
+    }
+    struct blocking_wait_check chk = { .wanted_tag = tag, .wanted_addr = rdaddr, .wanted_port = TURF_PORT_READ_REQ, .buf = &resp, .len = sizeof(resp)}; 
+
+    if (!blocking_wait_for_response(daq, &chk))
+    {
+      success = 1; 
+      *data = resp.BIT.RDDATA; 
+      break; 
+    }
+  }
+
+  pthread_mutex_unlock(&daq->net.tx_lock); 
+
+  return !success; 
+}
 
 

@@ -321,6 +321,47 @@ const struct route_entry * get_routing_table(int force_update)
 }
 
 
+
+int route_entry_print(const struct route_entry * entry, FILE * f) 
+{
+  int ret = 0; 
+  char tmpbuf[INET_ADDRSTRLEN]; 
+
+  // empty route case, print nothing
+  if (memallzero(entry, sizeof(struct route_entry)) )
+    return 0; 
+
+  if (!entry->len)
+  {
+    ret+= fprintf(f,"default "); 
+  }
+  else
+  {
+    inet_ntop(AF_INET, &entry->dest, tmpbuf, sizeof(tmpbuf)); 
+    ret+= fprintf(f,"%s/%d ", tmpbuf, entry->len); 
+  }
+
+  if (entry->gw.s_addr)
+  {
+    inet_ntop(AF_INET, &entry->gw, tmpbuf, sizeof(tmpbuf)); 
+    ret+= fprintf(f,"via %s ", tmpbuf); 
+  }
+
+  if (*(entry->ifname))
+  {
+    ret += fprintf(f,"dev %s ", entry->ifname); 
+  }
+
+  if (entry->src.s_addr)
+  {
+    inet_ntop(AF_INET, &entry->src, tmpbuf, sizeof(tmpbuf)); 
+    ret+=fprintf(f,"src %s ", tmpbuf); 
+  }
+
+  ret+=fprintf(f,"\n"); 
+  return ret; 
+}
+
 PUEODAQ_TEST(print_routing_table)
 {
   const struct route_entry * routing_table = get_routing_table(0); 
@@ -332,38 +373,14 @@ PUEODAQ_TEST(print_routing_table)
   if (routing_table) 
   {
     int ientry = 0; 
-    char tmpbuf[INET_ADDRSTRLEN]; 
     while (!memallzero(&routing_table[ientry], sizeof(struct route_entry)))
     {
       if (!routing_table[ientry].len)
       {
         ndefault++; 
-        printf("default "); 
-      }
-      else
-      {
-        inet_ntop(AF_INET, &routing_table[ientry].dest, tmpbuf, sizeof(tmpbuf)); 
-        printf("%s/%d ", tmpbuf, routing_table[ientry].len); 
       }
 
-      if (routing_table[ientry].gw.s_addr)
-      {
-        inet_ntop(AF_INET, &routing_table[ientry].gw, tmpbuf, sizeof(tmpbuf)); 
-        printf("via %s ", tmpbuf); 
-      }
-
-      if (*(routing_table[ientry].ifname))
-      {
-        printf("dev %s ", routing_table[ientry].ifname); 
-      }
-
-      if (routing_table[ientry].src.s_addr)
-      {
-        inet_ntop(AF_INET, &routing_table[ientry].src, tmpbuf, sizeof(tmpbuf)); 
-        printf("src %s ", tmpbuf); 
-      }
-
-      printf("\n"); 
+      route_entry_print(&routing_table[ientry], stdout); 
       ientry++; 
     }
   }
@@ -376,6 +393,7 @@ PUEODAQ_TEST(print_routing_table)
 
 static int is_in_subnet(struct in_addr ip, struct in_addr base, uint8_t len) 
 {
+  if (!len) return 1; 
   uint32_t naddr =  1 << (32-len); 
   return ( ntohl(ip.s_addr -base.s_addr)  < naddr); 
 }
@@ -386,22 +404,26 @@ PUEODAQ_TEST(is_in_subnet_test)
   struct in_addr base; 
   uint8_t len; 
 
-  inet_pton(AF_INET,"10.1.1.42", &ip); 
-  inet_pton(AF_INET,"10.1.0.0", &base); 
+  base.s_addr = inet_addr("10.1.0.0"); 
+  ip.s_addr = inet_addr("10.1.1.42"); 
   len = 16; 
   PUEODAQ_CHECK(is_in_subnet(ip,base,len)); 
 
   len = 24; 
   PUEODAQ_CHECK(!is_in_subnet(ip,base,len)); 
 
-  inet_pton(AF_INET,"10.1.0.42", &ip); 
+  ip.s_addr = inet_addr("10.1.0.42"); 
+  PUEODAQ_CHECK(is_in_subnet(ip,base,len)); 
+
+  base.s_addr = inet_addr("0.0.0.0"); 
+  len = 0; 
   PUEODAQ_CHECK(is_in_subnet(ip,base,len)); 
 }
 
 
 const struct route_entry *  get_route_for_addr(const char * ip, const struct route_entry * table) 
 {
-  table = table?: get_routing_table(0); 
+  table = table ?: get_routing_table(0); 
   struct in_addr the_ip; 
   inet_pton(AF_INET,ip,&the_ip); 
 
@@ -465,12 +487,82 @@ PUEODAQ_TEST(route_entry_padding_initialization)
 
 
 
-
 int add_route(const struct route_entry *e) 
 {
   if (!e) return 0; 
 
-  return 0; 
+  int sck = ntlink_sock(); 
+
+  if (sck < 0) return -1; 
+
+  struct 
+  {
+    struct nlmsghdr h; 
+    struct rtmsg msg; 
+    char buf[512]; 
+  } req = 
+  {
+    .h = 
+    { 
+      .nlmsg_len   = NLMSG_LENGTH(sizeof(struct rtmsg)), 
+      .nlmsg_type  = RTM_NEWROUTE, 
+      .nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_EXCL, 
+    }, 
+    .msg  = 
+    {
+      .rtm_table    = RT_TABLE_MAIN, 
+      .rtm_type     = RTN_UNICAST, 
+      .rtm_family   = AF_INET, 
+      .rtm_scope    = RT_SCOPE_LINK,
+      .rtm_dst_len  = e->len ,
+      .rtm_protocol = RTPROT_BOOT 
+    },  
+    .buf = {0} 
+  }; 
+
+#define ADD_ATTR(type, data, data_size)\
+  do\
+  {\
+    struct rtattr * rta = (struct rtattr*) ( ((uint8_t*) &req.h)+ NLMSG_ALIGN(req.h.nlmsg_len)); \
+    int rta_len = RTA_LENGTH(data_size); \
+    if (NLMSG_ALIGN(req.h.nlmsg_len)+ RTA_ALIGN(rta_len) <= sizeof(req))\
+    {\
+       rta->rta_type = type; \
+       rta->rta_len = rta_len; \
+       if (data_size) \
+       {\
+         memcpy(RTA_DATA(rta), data, data_size);\
+       }\
+      req.h.nlmsg_len = NLMSG_ALIGN(req.h.nlmsg_len) + RTA_ALIGN(rta_len); \
+    }\
+  } while(0) 
+
+  if ( *e->ifname) 
+  {
+    int if_idx = if_nametoindex(e->ifname); 
+    if (if_idx) 
+    {
+      ADD_ATTR(RTA_OIF, &if_idx, sizeof(if_idx)); 
+    }
+    else
+    {
+      fprintf(stderr,"bad interface: %s\n", e->ifname); 
+      return -1; 
+    }
+  }
+
+  if (e->gw.s_addr)
+    ADD_ATTR(RTA_GATEWAY, &e->gw, sizeof(e->gw)); 
+
+  if (e->dest.s_addr)
+    ADD_ATTR(RTA_DST, &e->dest, sizeof(e->dest)); 
+
+  if (e->src.s_addr)
+    ADD_ATTR(RTA_SRC, &e->src, sizeof(e->src)); 
+
+
+#undef ADD_ATTR
+  return send(sck, &req, sizeof(req), 0) != sizeof(req); 
 }
 
 

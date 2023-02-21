@@ -4,7 +4,6 @@
 #include <string.h> 
 
 
-
 //using rusty's trick 
 int memallzero(const void * mem, size_t len) 
 {

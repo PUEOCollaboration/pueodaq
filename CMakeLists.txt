@@ -27,12 +27,17 @@ target_compile_options(pueodaq_static PRIVATE ${WARNFLAGS})
 
 #################### Tests and test executables######################
 add_executable(turfid test/turfid.c) 
+add_executable(route-for-addr test/route-for-addr.c src/pueodaq-net.c src/pueodaq-util.c) 
 add_executable(pueodaq-test test/pueodaq-test.c ${LIBSRC}) 
-target_compile_options(pueodaq-test PRIVATE ${WARNFLAGS})
-add_custom_target(test pueodaq-test) 
-add_custom_target(memtest valgrind --track-origins=yes pueodaq-test) 
+target_compile_options(pueodaq-test PRIVATE -DPUEODAQTEST_ENABLE ${WARNFLAGS})
+add_custom_target(test COMMAND pueodaq-test) 
+add_custom_target(memtest COMMAND valgrind --track-origins=yes pueodaq-test) 
 
 
+
+################## Analyzers ###################
+
+add_custom_target(cppcheck COMMAND cppcheck --enable=all ${CMAKE_CURRENT_SOURCE_DIR}/src) 
 
 
 

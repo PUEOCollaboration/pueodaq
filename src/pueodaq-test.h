@@ -31,11 +31,16 @@
 */
 
 #ifndef _PUEODAQ_TEST_H
-#define _PUEODAQ_EST_H
+#define _PUEODAQ_TEST_H
 #include <stdio.h> 
 
 
+#ifdef PUEODAQTEST_ENABLE
 #define PUEODAQTEST_SECTION __attribute__((section("pueodaqtest"))) __attribute__((__used__))
+#else 
+#define PUEODAQTEST_SECTION __attribute__((__unused__))
+#endif 
+
 
 
 struct pueodaq_test_q
@@ -49,7 +54,7 @@ struct pueodaq_test_q
 static void what(); \
 static struct pueodaq_test_q what##_s = { .name = nm, .fn = &what }; \
 static struct pueodaq_test_q * what##_s_ptr PUEODAQTEST_SECTION = &what##_s;  \
-void what()
+void what() 
 
 #define PUEODAQ_TEST(what) PUEODAQ_NAMED_TEST(what,#what) 
 
@@ -57,12 +62,17 @@ void what()
 extern struct pueodaq_test_q* __start_pueodaqtest;
 extern struct pueodaq_test_q* __stop_pueodaqtest;
 
-#ifndef PUEODAQTEST_MAIN
+#ifndef PUEODAQTEST_ENABLE
+static int pueodaq_test_npass;
+static int pueodaq_test_nfail;
+#else
+#ifndef PUEODAQTEST_MAIN 
 extern int pueodaq_test_npass;
 extern int pueodaq_test_nfail;
 #else
 int pueodaq_test_npass;
 int pueodaq_test_nfail;
+#endif
 #endif
 
 
