@@ -11,11 +11,22 @@
 
 
 
+#include "pueodaq-test.h" 
+PUEODAQ_TEST(daq_config_validate) 
+{
+  pueo_daq_config_t cfg = {  PUEO_DAQ_CONFIG_DFLT, .fragment_size = 1400 } ; 
+
+  PUEODAQ_CHECK ( !pueo_daq_config_validate (&cfg, stdout));
+
+}
+
+
+
 int pueo_daq_config_validate(const pueo_daq_config_t * cfg, FILE * out) 
 {
 
 
-  // Verify the network configuration is sane... 
+  // Verify the network configuration is sane...
   // Open a netlink socket
   int sock = ntlink_sock(); 
 
@@ -27,11 +38,15 @@ int pueo_daq_config_validate(const pueo_daq_config_t * cfg, FILE * out)
   {
     fprintf(out,"The kernel is routing the TURF IP (%s) to %s, but you specified the device %s. Trying to change route...\n", cfg->turf_ip_addr, e->ifname, cfg->eth_device); 
 
-    //set_route_for_addr
+    struct route_entry set = { .len = 31} ;
+    inet_aton(cfg->turf_ip_addr, &set.dest); 
+    strncpy(set.ifname, cfg->eth_device, IFNAMSIZ-1); 
+    add_route(&set); 
   }
 
+
   struct ifreq ifr; 
-  strncpy(ifr.ifr_name, cfg->eth_device, IFNAMSIZ-1); 
+  strncpy(ifr.ifr_name, cfg->eth_device ?: e->ifname, IFNAMSIZ-1); 
   int ret = 0; 
 
   //check the MTU 

@@ -17,11 +17,11 @@ void close_ntlink_sock();
 struct route_entry
 {
   char ifname[IFNAMSIZ]; 
-  struct in_addr dest; 
-  struct in_addr gw; 
-  struct in_addr src; 
+  struct in_addr dest;
+  struct in_addr gw;
+  struct in_addr src;
   uint8_t len; // len of route (0 for default, 24 for mask of 255.255.255.0, etc.) 
-}; 
+};
 
 
 
@@ -41,7 +41,7 @@ const struct route_entry * get_routing_table(int force_update);
 
 
 // set a routing entry( equivalent to ip route add dest/mask via gw dev ifname) 
-int add_route(const struct route_entry *e); 
+int add_route(const struct route_entry *e);
 
 
 
