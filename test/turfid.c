@@ -7,7 +7,7 @@
 #include <sys/socket.h> 
 #include <stdio.h> 
 
-const char * ip = "192.168.1.128"; 
+const char * ip = "10.68.65.81"; 
 
 int main(int nargs, char ** args) 
 {
