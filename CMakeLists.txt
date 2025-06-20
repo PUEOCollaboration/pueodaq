@@ -8,6 +8,8 @@ if (NOT CMAKE_BUILD_TYPE)
 
 endif()
 
+set(THREADS_PREFER_PTHREAD_FLAG TRUE)
+find_package(Threads REQUIRED)
 ## defines
 
 include_directories(src) 
@@ -29,9 +31,11 @@ target_compile_options(pueodaq_static PRIVATE ${WARNFLAGS})
 add_executable(turfid test/turfid.c) 
 add_executable(route-for-addr test/route-for-addr.c src/pueodaq-net.c src/pueodaq-util.c) 
 add_executable(pueodaq-test test/pueodaq-test.c ${LIBSRC})
-add_executable(pueo-fakedaq test/pueo-fakedaq.c ${LIBSRC})
+add_executable(pueo-fakedaq test/pueo-fakedaq.c)
 target_compile_options(pueodaq-test PRIVATE -DPUEODAQTEST_ENABLE ${WARNFLAGS})
-add_custom_target(test COMMAND pueodaq-test) 
+target_link_libraries(pueo-fakedaq Threads::Threads pueodaq m)
+target_link_libraries(pueodaq-test Threads::Threads m )
+add_custom_target(test COMMAND pueodaq-test)
 add_custom_target(memtest COMMAND valgrind --track-origins=yes pueodaq-test) 
 
 
