@@ -44,6 +44,7 @@ int pueo_daq_config_validate(const pueo_daq_config_t * cfg, FILE * out, struct i
   // get the route for the turf
 
   const struct route_entry * e = get_route_for_addr(cfg->turf_ip_addr, 0);
+  printf("%s\n", e->ifname);
 
   if (cfg->eth_device && strcmp(cfg->eth_device, e->ifname))
   {

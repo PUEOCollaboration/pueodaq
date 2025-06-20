@@ -37,6 +37,7 @@
 
 
 #include <stdint.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <time.h>
 #include <netinet/in.h>
@@ -72,6 +73,7 @@ typedef struct pueo_daq_config
 
   struct timespec timeout;
   size_t max_attempts;
+  bool debug;
 
 
 } pueo_daq_config_t;
@@ -124,8 +126,8 @@ typedef int (*pueo_daq_event_ready_callback_t)(pueo_daq_t * daq, uint32_t idx);
     .fragcontrol_in =0x5266,                \
     .fragment_in = 0x5278,                  \
   },                                        \
-  .timeout = {.tv_sec = 0, .tv_nsec = 10000000 }, \
-  .max_attempts = 10
+  .timeout = {.tv_sec = 0, .tv_nsec = 1e7 }, \
+  .max_attempts = 10, .debug = false
 
 
 
@@ -142,6 +144,7 @@ int pueo_daq_config_validate(const pueo_daq_config_t * cfg, FILE* outbuf, struct
  * @returns an opaque handle to the daq, or NULL if something failed.
  * */
 pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg);
+
 
 /** convenience wrapper  */
 #define pueo_daq_default_init() pueo_daq_init(NULL)
@@ -169,6 +172,7 @@ int pueo_daq_dump(pueo_daq_t * daq, FILE * stream, int flags);
 int pueo_daq_nready(const pueo_daq_t * daq) ;
 
 
+int pueo_daq_soft_trig(pueo_daq_t * daq);
 
 /** Copies out an event, then releases the DAQ buffer.
  * If none is ready, this will block. (You can pass NULL to just eat an event).

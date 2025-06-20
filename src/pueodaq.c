@@ -31,15 +31,68 @@ typedef enum
   TURF_PORT_ACK = 0x5461,
   TURF_PORT_NACK = 0x546e,
   TURF_PORT_FRAGMENT_MIN = 0x5400,
-  TURF_PORT_FRAGMENT_MAX = 0x543f
+  TURF_PORT_FRAGMENT_MAX = 0x543f,
 } e_turf_ports;
 
+
+
+typedef struct reg
+{
+  uint32_t addr;
+  uint32_t reladdr;
+  uint8_t offs;
+  uint8_t len;
+  uint32_t mask;
+  bool ro;
+  const char * name;
+} reg_t;
+
+enum 
+{
+ RUNCMD_RESET =  2,
+ RUNCMD_STOP =  3
+} e_turf_constants;
+
+
+#define MAKE_REG(BASE, REL,OFF,LEN,RO)  .addr = REL+BASE, .reladdr = REL, .offs = OFF, .len = LEN, . mask = ((1ull << LEN)-1)<< OFF, .ro = RO
+#define BF(BASE,reladdr,bitoffs,bitlen) MAKE_REG(BASE, reladdr, bitoffs, bitlen, false )
+#define REG_RO(BASE ,reladdr) MAKE_REG(BASE, reladdr, 0, 32, true)
+#define REG(BASE ,reladdr) MAKE_REG(BASE, reladdr, 0, 32, false)
+
+#define DEF_DECLARE(NAME, DEF) reg_t NAME;
+#define DEF_DEFINE(NAME, DEF) .NAME = { DEF, .name = #NAME },
+
+
+#define REG_GROUP(NAME, BASE, REGS)\
+  static const struct {\
+    uint32_t base; \
+    REGS(DEF_DECLARE,BASE)\
+  } NAME = { .base = BASE, REGS(DEF_DEFINE,BASE)  }
+
+
+#define EVENT_REGS(DEF,BASE)\
+DEF(reset_events, BF(BASE, 0x0, 0, 1))\
+DEF(mask,         BF(BASE, 0x0, 8, 4))\
+DEF(ndwords0,     REG_RO(BASE, 0x010))\
+DEF(ndwords1,     REG_RO(BASE, 0x014))\
+DEF(ndwords2,     REG_RO(BASE, 0x018))\
+DEF(ndwords3,     REG_RO(BASE, 0x01C))
+
+REG_GROUP(turf_event, 0x18000, EVENT_REGS);
+
+#define TRIG_REGS(DEF,BASE)\
+DEF(runcmd,   REG(BASE, 0x0))\
+DEF(softrig,    REG(BASE, 0x110))
+
+REG_GROUP(turf_trig, 0x1c000, TRIG_REGS);
 
 typedef enum
 {
   TURF_MAX_EVENT_SIZE = 1 << 20 ,
   TURF_MAX_FRAGMENTS = 1 << 10,
-  TURF_NUM_ADDR = 1 << 12
+  TURF_NUM_ADDR = 1 << 12,
+  TURF_MAX_ACKS = 1
+
 }e_turf_limits;
 
 typedef enum
@@ -53,6 +106,22 @@ struct fragment
   turf_fraghdr_t hd;
   int16_t buf[];
 };
+
+static int pueo_daq_write_reg(pueo_daq_t * daq, const reg_t * reg, uint32_t val)
+{
+  assert (!reg->ro);
+  val &= reg->mask;
+  return pueo_daq_write(daq, reg->addr, val);
+}
+
+static int pueo_daq_read_reg(pueo_daq_t * daq, const reg_t * reg, uint32_t * val)
+{
+
+  int r = pueo_daq_read(daq, reg->addr, val);
+  *val&=reg->mask;
+  return r;
+}
+
 
 static uint64_t pack_time(struct timespec ts)
 {
@@ -209,12 +278,14 @@ struct pueo_daq
   {
     PUEODAQ_UNINIT,
     PUEODAQ_IDLE,
+    PUEODAQ_STARTING,
     PUEODAQ_RUNNING,
     PUEODAQ_ERROR,
     PUEODAQ_STOPPING
   } state;
 
 };
+
 
 struct blocking_wait_check
 {
@@ -225,8 +296,9 @@ struct blocking_wait_check
 
 #define READ_WAIT_CHECK(addr,tag) ( (struct blocking_wait_check) {.wanted = (addr & 0x0fffffff) | (tag << 28), .wanted_mask = 0xffffffff } )
 #define WRITE_WAIT_CHECK(addr,tag)( (struct blocking_wait_check) {.wanted = (addr & 0x0fffffff) | (tag << 28), .wanted_mask = 0xffffffff } )
-#define ACK_WAIT_CHECK(addr,tag)  ( (struct blocking_wait_check) {.wanted = (addr & 0x0fffffff) | (tag << 28), .wanted_mask = 0xffffffff } )
-#define CTL_WAIT_CHECK(ctl) ( ( struct blocking_wait_check)  {.wanted = ctl.RAW, .wanted_mask = 0xffffffffffffffff } )
+#define ACK_WAIT_CHECK(addr,tag,allow) ( (struct blocking_wait_check) { .wanted = (  (((uint64_t) allow) << 63) | (1ull << 62) | ( ((uint64_t) addr) <<20) | (((uint64_t)tag) << 32)), .wanted_mask = 0xc00000fffff00000} )
+#define CTL_WAIT_CHECK(ctl) ( ( struct blocking_wait_check)  {.wanted = ctl.RAW, .wanted_mask = 0xffffffffffff0000 } )
+#define PERMISSIVE_WAIT_CHECK() ( (struct blocking_wait_check)  { .wanted_mask = 0 } )
 
 
 static void * control_thread(void * arg);
@@ -240,7 +312,11 @@ static int blocking_wait_for_response(pueo_daq_t * daq,  int sck, struct sockadd
   fd.fd = sck;
   fd.events = POLLIN;
   int ready = ppoll (&fd, 1, &daq->cfg.timeout, NULL);
-  if (!ready || !(fd.revents & POLLIN ))  return -1;
+  if (!ready || !(fd.revents & POLLIN ))  
+  {
+    if (daq->cfg.debug) fprintf(stderr,"bwait: Timeout reached..\n");
+    return -1;
+  }
 
   //just wait, don't check
   if (!check) return 0;
@@ -252,16 +328,32 @@ static int blocking_wait_for_response(pueo_daq_t * daq,  int sck, struct sockadd
   ssize_t r = recvfrom(sck, &check->val, sizeof(check->val),0, &src, &srclen);
 
   //make sure we got something
-  if ( r <= 0) return -2;
+  if ( r <= 0)
+  {
+    if (daq->cfg.debug) fprintf(stderr,"bwait: r <=0 !!!");
+    return -2;
+  }
 
   //check to make sure the packet came from the turf
-  if (src.sin_addr.s_addr != daq->net.turf_ip.s_addr) return -3;
+  if (src.sin_addr.s_addr != daq->net.turf_ip.s_addr) 
+  {
+    if (daq->cfg.debug) fprintf(stderr,"bwait: wrong ip");
+    return -3;
+  }
 
   // Check it's the correct port
-  if (src.sin_port != wr->sin_port) return -4;
+  if (src.sin_port != wr->sin_port)
+  {
+    if (daq->cfg.debug) fprintf(stderr,"bwait: wrong port");
+    return -4;
+  }
 
   //check for wanted mismatch
-  if ( (check->wanted & check->wanted_mask) != (check->val & check->wanted_mask)) return -5;
+  if ( (check->wanted & check->wanted_mask) != (check->val & check->wanted_mask)) 
+  {
+    if (daq->cfg.debug) fprintf(stderr,"bwait: wanted fail. Got 0x%016lx, wanted 0x%016lx (mask 0x%016lx)\n", check->val, check->wanted, check->wanted_mask);
+    return -5;
+  }
 
   return 0;
 }
@@ -297,6 +389,16 @@ static int acked_multisend(pueo_daq_t * daq, int sock, uint16_t port, size_t Nse
     acked_msg_ptr_t snd, acked_msg_ptr_t rcv, struct blocking_wait_check * check)
 {
 
+  if (daq->cfg.debug)
+  {
+    printf("Sending %zu packets to turf:%hu\n > ", Nsend, port);
+    for (unsigned i = 0; i < (Nsend > 4 ? 4 : Nsend) ; i++)
+      printf("  0x%016lx", snd.u[i]);
+    if (Nsend > 4) printf(" ...");
+    printf("\n");
+  }
+
+  int ret = -1;
   struct sockaddr_in a = {.sin_addr = daq->net.turf_ip, .sin_port = htons(port)};
   for (unsigned attempt = 0; attempt < daq->cfg.max_attempts; attempt++)
   {
@@ -310,11 +412,17 @@ static int acked_multisend(pueo_daq_t * daq, int sock, uint16_t port, size_t Nse
     if (!check) break;
     if (!blocking_wait_for_response(daq, sock, &a, check))
     {
+      if (daq->cfg.debug) 
+      {
+        printf( "<   0x%016lx\n", check->val);
+      }
       if (rcv.u) *rcv.u= check->val;
+      ret = 0;
+      break;
     }
   }
 
-  return 0;
+  return ret;
 }
 
 static int acked_send(pueo_daq_t * daq, int sock, uint16_t port,  acked_msg_t snd, acked_msg_ptr_t rcv, struct blocking_wait_check * check)
@@ -540,13 +648,13 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg)
         }\
       }\
     }\
-    struct sockaddr_in addr = {.sin_family = AF_INET, .sin_port = port, .sin_addr = {.s_addr = htonl(INADDR_ANY)} }; \
+    struct sockaddr_in addr = {.sin_family = AF_INET, .sin_port = htons(port), .sin_addr = {.s_addr = htonl(INADDR_ANY)} }; \
     if (bind(daq->net.which,(struct sockaddr*) &addr, sizeof(addr))) { \
      fprintf (stderr,"Couldn't bind %s to %d\n", #which, port);\
      goto bail; \
     }\
     if (dest_port) {\
-      addr.sin_port = dest_port;\
+      addr.sin_port = htons(dest_port);\
       addr.sin_addr.s_addr = daq->net.turf_ip.s_addr;\
       if (connect (daq->net.which, (struct sockaddr*) &addr, sizeof(addr))) { \
         fprintf(stderr, "Coudln't connect to %s:%hhu\n", daq->cfg.turf_ip_addr, dest_port);\
@@ -572,10 +680,17 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg)
   pthread_mutex_init(&daq->net.tx_lock,0);
   daq->run_number = 0;
 
+  sigset_t newset, oldset;
+  sigemptyset(&newset);
+  sigaddset(&newset, SIGINT);
+  sigaddset(&newset, SIGTERM);
 
   //set up threads
+  pthread_sigmask(SIG_BLOCK, &newset, &oldset) ;
+
   if (pthread_create(&daq->ctl_thread, NULL, control_thread, daq)) 
   {
+    pthread_sigmask(SIG_SETMASK, &oldset, NULL);
     fprintf(stderr,"Could not create ctl thread\n");
     goto bail;
   }
@@ -586,9 +701,12 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg)
     if (pthread_create(&daq->reader_threads[i], NULL, reader_thread, &s))
     {
       fprintf(stderr, "Could not create reader_thread_%d\n", i);
+      pthread_sigmask(SIG_SETMASK, &oldset, NULL);
       goto bail;
     }
   }
+
+  pthread_sigmask(SIG_SETMASK, &oldset, NULL);
 
   // this prepares the event interface
 
@@ -610,15 +728,77 @@ bail:
 
 int pueo_daq_start(pueo_daq_t * daq)
 {
-  atomic_store(&daq->state, PUEODAQ_RUNNING);
+  atomic_store(&daq->state, PUEODAQ_STARTING);
 
   // open the event interface
-  turf_ctl_t ctl  = {.BIT = { .COMMAND = TURF_OP_COMMAND }};
+  turf_ctl_t ctl  = {.BIT =
+    {
+      .COMMAND = TURF_OP_COMMAND,
+      .PAYLOAD = ((uint64_t)htons(daq->cfg.daq_ports.fragment_in)) | ( ((uint64_t)htonl(daq->net.our_ip.s_addr)) << 16)
+    }
+  };
 
-  return acked_send(daq, daq->net.daq_ctl_sck, TURF_PORT_CTL_REQ, ctl, NULL, &CTL_WAIT_CHECK(ctl));
+  if (acked_send(daq, daq->net.daq_ctl_sck, TURF_PORT_CTL_REQ, ctl, NULL, &CTL_WAIT_CHECK(ctl)))
+  {
+    fprintf(stderr,"Problem with open\n");
+    return 1;
+  }
+
+
+  // read and write the bit
+  uint32_t reset = 0;
+  if (pueo_daq_read_reg(daq, &turf_event.reset_events, &reset))
+  {
+    fprintf(stderr,"Could not read reset_events\n");
+    return 1;
+  }
+  if (!reset)
+  {
+    if (pueo_daq_write_reg(daq, &turf_event.reset_events, 1)
+        || pueo_daq_write_reg(daq, &turf_event.reset_events, 0))
+    {
+      fprintf(stderr,"Could not write reset_events\n");
+
+      return 1;
+    }
+
+  }
+  else {
+    printf("Already in reset???\n");
+  }
+
+  //setup all acks, batch in groups of TURF_MAX_ACKS
+  int nallow = daq->cfg.max_in_flight;
+  daq->num_events_allowed = nallow;
+  for (unsigned i = 0; i < TURF_NUM_ADDR; i+=TURF_MAX_ACKS)
+  {
+    turf_ack_t acks[TURF_MAX_ACKS];
+    for (unsigned j = 0 ; j < TURF_MAX_ACKS; j++)
+    {
+      acks[j].BIT.ADDR = i+j;
+      acks[j].BIT.TAG = i + j;
+      acks[j].BIT.ALLOW = !!(nallow-- > 0);
+      daq->addr_map[i+j] = i+j;
+    }
+
+    if (acked_multisend(daq, daq->net.daq_frgctl_sck, TURF_PORT_ACK, TURF_MAX_ACKS, acks,
+          NULL,  &ACK_WAIT_CHECK(acks[TURF_MAX_ACKS-1].BIT.ADDR, acks[TURF_MAX_ACKS-1].BIT.TAG, acks[TURF_MAX_ACKS-1].BIT.ALLOW)))
+    {
+      fprintf(stderr,"Problem sending acks\n");
+      return 1;
+    }
+  }
+
+  daq->num_addr_assigned = TURF_NUM_ADDR;
+  if (pueo_daq_write_reg(daq, &turf_trig.runcmd, RUNCMD_RESET))
+  {
+    fprintf(stderr,"Could not run runcmd\n");
+    return 1;
+
+  }
+  atomic_store(&daq->state, PUEODAQ_RUNNING);
 
   return 0;
-
 }
 
 int pueo_daq_stop(pueo_daq_t * daq)
@@ -628,11 +808,17 @@ int pueo_daq_stop(pueo_daq_t * daq)
 
   if (expected == PUEODAQ_RUNNING)
   {
+    if (pueo_daq_write_reg(daq, &turf_trig.runcmd, RUNCMD_STOP))
+    {
+      fprintf(stderr,"Could not run runcmd\n");
+      return 1;
+    }
     //try to interrupt the recvs
     for (int i = 0; i < daq->cfg.n_recvthreads; i++)
     {
       pthread_kill(daq->reader_threads[i], SIGUSR1);
     }
+
   }
 
 
@@ -673,48 +859,36 @@ int pueo_daq_reset(pueo_daq_t * daq)
 
 
 
-
   // close the event interface
   pueo_daq_stop(daq);
 
   // setup fragments etc.
+  // get max fragments
 
-  turf_ctl_param_t p = {.BIT.FRAGSRCMASK = 0xffff, .BIT.ADDR = 4095, .BIT.FRAGMENT = daq->cfg.fragment_size-1};
-  turf_ctl_t ctl = { .BIT.COMMAND = TURF_PW_COMMAND, .BIT.PAYLOAD = p.RAW };
+  turf_ctl_t ctl = { .BIT.COMMAND = TURF_PR_COMMAND };
+
+  if (acked_send(daq,daq->net.daq_ctl_sck, TURF_PORT_CTL_REQ, ctl, &ctl, &PERMISSIVE_WAIT_CHECK()))
+  {
+      fprintf(stderr,"Problem calling PR\n");
+      return 1;
+  }
+  turf_ctl_param_t pr = {.RAW = ctl.BIT.PAYLOAD};
+  printf("%hu %hu %hu\n", pr.BIT.FRAGSRCMASK, pr.BIT.ADDR, pr.BIT.FRAGMENT);
+
+  /*
+  turf_ctl_param_t p = {.BIT.FRAGSRCMASK = 0x3f, .BIT.ADDR = 4095, .BIT.FRAGMENT = daq->cfg.fragment_size-8};
+  ctl.BIT.PAYLOAD =  p.RAW;
+  ctl.BIT.COMMAND = TURF_PW_COMMAND;
 
   if (acked_send(daq, daq->net.daq_ctl_sck, TURF_PORT_CTL_REQ, ctl, NULL, &CTL_WAIT_CHECK(ctl)))
   {
-      fprintf(stderr,"Problem calling PW");
+      fprintf(stderr,"Problem calling PW\n");
       return 1;
   }
 
+  */
 
   atomic_store(&daq->state,PUEODAQ_IDLE);
-
-  //setup all acks, batch in groups of 128
-  int nallow = daq->cfg.max_in_flight;
-  daq->num_events_allowed = nallow;
-  for (unsigned i = 0; i < TURF_NUM_ADDR; i+=128)
-  {
-    turf_ack_t acks[128];
-    for (unsigned j = 0 ; j < 128; j++)
-    {
-      acks[j].BIT.ADDR = i+j;
-      acks[j].BIT.TAG = i;
-      acks[j].BIT.ALLOW = (nallow-- > 0);
-      daq->addr_map[i+j] = i+j;
-    }
-
-    if (acked_multisend(daq, daq->net.daq_frgctl_sck, TURF_PORT_ACK, sizeof(acks)/sizeof(*acks), acks,
-          NULL,  &ACK_WAIT_CHECK(acks[0].BIT.ADDR, acks[0].BIT.TAG)))
-    {
-      fprintf(stderr,"Probleming sending acks\n");
-      return 1;
-    }
-  }
-
-
-  daq->num_addr_assigned = TURF_NUM_ADDR;
 
   return 0;
 }
@@ -724,6 +898,7 @@ int pueo_daq_reset(pueo_daq_t * daq)
 void pueo_daq_destroy(pueo_daq_t * daq)
 {
   if (!daq) return;
+
 
   //wait for receive threads
   atomic_store(&daq->state,PUEODAQ_STOPPING);
@@ -737,8 +912,18 @@ void pueo_daq_destroy(pueo_daq_t * daq)
   {
     pthread_join(daq->reader_threads[i], NULL);
     close(daq->net.daq_frg_sck[i]);
-
   }
+
+  // Send a CL 
+  // close the event interface
+  turf_ctl_t ctl  = {.BIT = { .COMMAND = TURF_CL_COMMAND }};
+  if ( acked_send(daq, daq->net.daq_ctl_sck, TURF_PORT_CTL_REQ, ctl, NULL, &CTL_WAIT_CHECK(ctl)))
+  {
+    fprintf(stderr,"Trouble closing\n");
+  }
+
+
+
 
   //close non-thread sockets
   close(daq->net.daq_ctl_sck);
@@ -775,8 +960,8 @@ int pueo_daq_write(pueo_daq_t * daq, uint32_t wraddr, uint32_t data)
   pthread_mutex_unlock(&daq->net.tx_lock);
 
   return r;
-
 }
+
 
 int pueo_daq_read(pueo_daq_t * daq, uint32_t rdaddr, uint32_t *data)
 {
@@ -790,19 +975,25 @@ int pueo_daq_read(pueo_daq_t * daq, uint32_t rdaddr, uint32_t *data)
 
   return r;
 }
-
+void signore(int sig)
+{
+  (void) sig;
+}
 
 void * reader_thread(void *arg)
 {
+
   struct reader_thread_setup *s = (struct reader_thread_setup*) arg;
   pueo_daq_t * daq = s->daq;
   int sck_frg = daq->net.daq_frg_sck[s->tnum];
+
+  signal(SIGUSR1, signore);
 
   while(1)
   {
     int state = atomic_load(&daq->state);
     // we should do nothing
-    if (state == PUEODAQ_IDLE || state == PUEODAQ_UNINIT)
+    if (state == PUEODAQ_IDLE || state == PUEODAQ_UNINIT || state == PUEODAQ_STARTING)
     {
         usleep(10000);
         continue;
@@ -996,9 +1187,9 @@ void* control_thread(void * arg)
 {
   pueo_daq_t * daq = (pueo_daq_t*) arg;
 
-  // allow up to 64 acqs at a time since why not
+  // allow up to TURF_MAX_ACKS acqs at a time since why not
 
-  turf_ack_t acks[64];
+  turf_ack_t acks[TURF_MAX_ACKS];
   unsigned num_acks = 0;
 
   //more than one nack is overkill
@@ -1015,7 +1206,7 @@ void* control_thread(void * arg)
       break;
     }
 
-    if (state == PUEODAQ_IDLE || state == PUEODAQ_UNINIT)
+    if (state == PUEODAQ_IDLE || state == PUEODAQ_UNINIT || state == PUEODAQ_STARTING)
     {
       usleep(10000); // sleep 10 ms
       continue;
@@ -1036,14 +1227,14 @@ void* control_thread(void * arg)
       num_acks = 0;
       for (unsigned w = 0; w < sizeof(daq->ack_map) / sizeof(*daq->ack_map); w++)
       {
-        if (num_acks >= 64 || num_acks >= capacity) break;
+        if (num_acks >=TURF_MAX_ACKS || num_acks >= capacity) break;
         uint64_t word = atomic_load(&daq->ack_map[w]);
 
         if (word != 0) // we have a candidate to ack!
         {
           for ( int bit = 0; bit < 64; bit++)
           {
-            if (num_acks >= 64 || num_acks >= capacity) break;
+            if (num_acks >= TURF_MAX_ACKS || num_acks >= capacity) break;
             if (word & (1 << bit))
             {
               uint16_t addr = w*64 +bit;
@@ -1057,23 +1248,26 @@ void* control_thread(void * arg)
       }
 
 
-      if (acked_multisend(daq, daq->net.daq_frgctl_sck, TURF_PORT_ACK, num_acks, acks, NULL, &ACK_WAIT_CHECK(acks[0].BIT.ADDR, acks[0].BIT.TAG)))
+      if (num_acks > 0)
       {
-          fprintf(stderr,"Problem acking\n");
-          continue;
-      }
+        if (acked_multisend(daq, daq->net.daq_frgctl_sck, TURF_PORT_ACK, num_acks, acks, NULL, &ACK_WAIT_CHECK(acks[TURF_MAX_ACKS-1].BIT.ADDR, acks[TURF_MAX_ACKS-1].BIT.TAG, acks[TURF_MAX_ACKS-1].BIT.ALLOW)))
+        {
+            fprintf(stderr,"Problem acking\n");
+            continue;
+        }
 
-      //ack successful!
-      daq->num_acks_sent+=num_acks;
-      daq->num_events_allowed += num_acks;
-      //these count basically the same thing
-      tag++;
+        //ack successful!
+        daq->num_acks_sent+=num_acks;
+        daq->num_events_allowed += num_acks;
+        //these count basically the same thing
+        tag++;
 
-      //increment the addresses
-      for (unsigned i = 0; i < num_acks; i++)
-      {
-        uint16_t addr = acks[num_acks].BIT.ADDR;
-        daq->addr_map[addr] = daq->num_addr_assigned++;
+        //increment the addresses
+        for (unsigned i = 0; i < num_acks; i++)
+        {
+          uint16_t addr = acks[num_acks].BIT.ADDR;
+          daq->addr_map[addr] = daq->num_addr_assigned++;
+        }
       }
 
     }
@@ -1084,4 +1278,9 @@ void* control_thread(void * arg)
   return NULL;
 }
 
+
+int pueo_daq_soft_trig(pueo_daq_t * daq)
+{
+  return pueo_daq_write_reg(daq, &turf_trig.softrig, 1);
+}
 
