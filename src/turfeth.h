@@ -89,7 +89,7 @@ typedef union {
 #define TURF_OP_COMMAND 0x4F50
 #define TURF_CL_COMMAND 0x434C
 #define TURF_ID_COMMAND 0x4944
-#define TURF_PR_COMMAND 0x5043
+#define TURF_PR_COMMAND 0x5052
 #define TURF_PW_COMMAND 0x5057
 
 typedef union {
