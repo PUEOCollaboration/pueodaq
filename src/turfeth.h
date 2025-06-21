@@ -92,6 +92,16 @@ typedef union {
 #define TURF_PR_COMMAND 0x5052
 #define TURF_PW_COMMAND 0x5057
 
+#define TURF_PORT_READ_REQ  0x5472
+#define TURF_PORT_WRITE_REQ  0x5477
+#define TURF_PORT_CTL_REQ  0x5463
+#define TURF_PORT_ACK  0x5461
+#define TURF_PORT_NACK  0x546e
+#define TURF_PORT_FRAGMENT_MIN  0x5400
+#define TURF_PORT_FRAGMENT_MAX  0x543f
+
+
+
 typedef union {
   struct {
     uint64_t COMMAND:16; // 2 ASCII byte command (see above definitions)

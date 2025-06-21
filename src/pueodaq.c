@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 
 #include "turfeth.h"
+#include "turfregs.h"
 #include <arpa/inet.h>
 #include <netinet/ip.h>
 #include <assert.h>
@@ -23,68 +24,6 @@
 #include "pueodaq.h"
 #include "pueodaq-net.h"
 
-typedef enum
-{
-  TURF_PORT_READ_REQ = 0x5472,
-  TURF_PORT_WRITE_REQ = 0x5477,
-  TURF_PORT_CTL_REQ = 0x5463,
-  TURF_PORT_ACK = 0x5461,
-  TURF_PORT_NACK = 0x546e,
-  TURF_PORT_FRAGMENT_MIN = 0x5400,
-  TURF_PORT_FRAGMENT_MAX = 0x543f,
-} e_turf_ports;
-
-
-
-typedef struct reg
-{
-  uint32_t addr;
-  uint32_t reladdr;
-  uint8_t offs;
-  uint8_t len;
-  uint32_t mask;
-  bool ro;
-  const char * name;
-} reg_t;
-
-enum 
-{
- RUNCMD_RESET =  2,
- RUNCMD_STOP =  3
-} e_turf_constants;
-
-
-#define MAKE_REG(BASE, REL,OFF,LEN,RO)  .addr = REL+BASE, .reladdr = REL, .offs = OFF, .len = LEN, . mask = ((1ull << LEN)-1)<< OFF, .ro = RO
-#define BF(BASE,reladdr,bitoffs,bitlen) MAKE_REG(BASE, reladdr, bitoffs, bitlen, false )
-#define REG_RO(BASE ,reladdr) MAKE_REG(BASE, reladdr, 0, 32, true)
-#define REG(BASE ,reladdr) MAKE_REG(BASE, reladdr, 0, 32, false)
-
-#define DEF_DECLARE(NAME, DEF) reg_t NAME;
-#define DEF_DEFINE(NAME, DEF) .NAME = { DEF, .name = #NAME },
-
-
-#define REG_GROUP(NAME, BASE, REGS)\
-  static const struct {\
-    uint32_t base; \
-    REGS(DEF_DECLARE,BASE)\
-  } NAME = { .base = BASE, REGS(DEF_DEFINE,BASE)  }
-
-
-#define EVENT_REGS(DEF,BASE)\
-DEF(reset_events, BF(BASE, 0x0, 0, 1))\
-DEF(mask,         BF(BASE, 0x0, 8, 4))\
-DEF(ndwords0,     REG_RO(BASE, 0x010))\
-DEF(ndwords1,     REG_RO(BASE, 0x014))\
-DEF(ndwords2,     REG_RO(BASE, 0x018))\
-DEF(ndwords3,     REG_RO(BASE, 0x01C))
-
-REG_GROUP(turf_event, 0x18000, EVENT_REGS);
-
-#define TRIG_REGS(DEF,BASE)\
-DEF(runcmd,   REG(BASE, 0x0))\
-DEF(softrig,    REG(BASE, 0x110))
-
-REG_GROUP(turf_trig, 0x1c000, TRIG_REGS);
 
 typedef enum
 {
@@ -107,20 +46,37 @@ struct fragment
   int16_t buf[];
 };
 
-static int pueo_daq_write_reg(pueo_daq_t * daq, const reg_t * reg, uint32_t val)
-{
-  assert (!reg->ro);
-  val &= reg->mask;
-  return pueo_daq_write(daq, reg->addr, val);
-}
 
-static int pueo_daq_read_reg(pueo_daq_t * daq, const reg_t * reg, uint32_t * val)
+static int __attribute__((nonnull))
+pueo_daq_read_reg(pueo_daq_t * daq, const turfreg_t * reg, uint32_t * val)
 {
 
   int r = pueo_daq_read(daq, reg->addr, val);
-  *val&=reg->mask;
+  (*val) &=reg->mask;
+  (*val)>>=reg->offs;
   return r;
 }
+
+static int  __attribute__((nonnull))
+pueo_daq_write_reg(pueo_daq_t * daq, const turfreg_t * reg, uint32_t val)
+{
+  assert (!reg->ro);
+  val <<= reg->offs;
+  val &= reg->mask;
+  if (reg->len!=32)
+  {
+    uint32_t current;
+    if (pueo_daq_read_reg(daq, reg, &current))
+    {
+      fprintf(stderr,"Could not read old reg\n");
+      return -1;
+    }
+    val |= current & (~reg->mask);
+  }
+
+  return pueo_daq_write(daq, reg->addr, val);
+}
+
 
 
 static uint64_t pack_time(struct timespec ts)
@@ -1265,7 +1221,7 @@ void* control_thread(void * arg)
         //increment the addresses
         for (unsigned i = 0; i < num_acks; i++)
         {
-          uint16_t addr = acks[num_acks].BIT.ADDR;
+          uint16_t addr = acks[num_acks-1].BIT.ADDR;
           daq->addr_map[addr] = daq->num_addr_assigned++;
         }
       }
