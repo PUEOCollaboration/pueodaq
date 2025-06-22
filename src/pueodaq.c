@@ -161,6 +161,7 @@ struct pueo_daq
   struct
   {
     uint32_t turfid;
+    uint32_t turf_datever;
     struct
     {
       uint32_t turfioid;
@@ -809,7 +810,12 @@ int pueo_daq_reset(pueo_daq_t * daq)
   daq->num_events_allowed = 0;
 
   // reset tags on TURFS
-  pueo_daq_read(daq,0,&daq->census.turfid);
+  pueo_daq_read_reg(daq,&turf.turfid,&daq->census.turfid);
+  printf("TURFID: %0x\n", daq->census.turfid);
+
+  //read date version
+  pueo_daq_read_reg(daq,&turf.dateversion,&daq->census.turf_datever);
+  printf("DATEVER: %0x\n", daq->census.turf_datever);
 
   //TODO take a census of who we have
 
