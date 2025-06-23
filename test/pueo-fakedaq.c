@@ -14,6 +14,11 @@ void handler(int signum)
 }
 
 double interval = 1;
+uint8_t turfio_mask = 0;
+bool debug = false;
+uint8_t nthreads = 1;
+int max_in_flight =32;
+const char * outdir = "/tmp";
 
 int ready(pueo_daq_t * daq, uint32_t idx)
 {
@@ -22,8 +27,8 @@ int ready(pueo_daq_t * daq, uint32_t idx)
   pueo_daq_event_data_t  * d = calloc(1,sizeof(*d));
 
   pueo_daq_get_event(daq, d);
-  char fname[128];
-  sprintf(fname,"/tmp/fakedaq_%05d.dat", idx);
+  char fname[512];
+  sprintf(fname,"%s/fakedaq_%05d.dat", outdir, idx);
   FILE * f  = fopen(fname,"w");
   fwrite(&d, sizeof(d), 1, f);
   fclose(f);
@@ -34,7 +39,46 @@ int ready(pueo_daq_t * daq, uint32_t idx)
 int main (int nargs, char ** args)
 {
 
-  pueo_daq_config_t cfg = { PUEO_DAQ_CONFIG_DFLT, .fragment_size = 1024, .debug = (nargs == 2 && !strcmp(args[1],"-d")), .n_recvthreads =1, .max_in_flight = 32 };
+  if (nargs > 1)
+  {
+
+    for (int  i = 1; i < nargs; i++)
+    {
+      bool last = (i == nargs-1);
+      if (!strcmp(args[i],"-I") && !last)
+      {
+        float maybe_interval = atof(args[++i]);
+        if (maybe_interval > 0) interval = maybe_interval;
+      }
+      else if (!strcmp(args[i],"-T") && !last)
+      {
+        turfio_mask = strtol(args[++i], NULL, 0);
+      }
+      else if (!strcmp(args[i],"-t") && !last)
+      {
+        int maybe_nthreads = atoi(args[++i]);
+        if (maybe_nthreads  > 0) nthreads = maybe_nthreads;
+      }
+      else if (!strcmp(args[i],"-M") && !last)
+      {
+        int maybe_max = atoi(args[++i]);
+        if (maybe_max > 0) max_in_flight = maybe_max;
+
+      }
+      else if (!strcmp(args[i],"-o") && !last)
+      {
+        outdir = args[++i];
+      }
+      else if (!strcmp(args[i],"-d"))
+      {
+        debug = true;
+      }
+    }
+
+  }
+
+  printf("Using interval %f, turfio_mask 0x%hhx\n", interval, turfio_mask);
+  pueo_daq_config_t cfg = { PUEO_DAQ_CONFIG_DFLT, .fragment_size = 1024, .debug = debug, .n_recvthreads =nthreads, .max_in_flight = max_in_flight, .turfio_mask = turfio_mask };
 
   signal(SIGINT, handler);
 
