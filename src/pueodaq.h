@@ -36,6 +36,10 @@
 */
 
 
+#define PUEODAQ_NCHAN 224
+#define PUEODAQ_NSAMP 1024
+#define PUEODAQ_HEADER_SIZE 1024
+
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -74,6 +78,7 @@ typedef struct pueo_daq_config
   struct timespec timeout;
   size_t max_attempts;
   bool debug;
+  uint32_t turfio_mask : 4;
 
 
 } pueo_daq_config_t;
@@ -92,17 +97,11 @@ typedef struct pueo_daq_event_data
    } tag;
    struct
    {
-     uint8_t v[1024];
+     uint8_t v[PUEODAQ_HEADER_SIZE];
    } bytes;
   } header;
-  uint32_t nsamples_per_event;
-  int16_t waveform_data[]; // flexible array member, must be large enough to hold max_ev_size - header
+  int16_t waveform_data[PUEODAQ_NCHAN][PUEODAQ_NSAMP]; //TODO parameterize this, make it flexible maybe. This used to be flexible but right now the firmware isn't flexible so...
 } pueo_daq_event_data_t;
-
-inline int16_t * pueo_daq_event_data_get_channel(pueo_daq_event_data_t * d, uint8_t channel)
-{
-  return d->waveform_data + channel * d->nsamples_per_event;
-}
 
 
 typedef int (*pueo_daq_event_ready_callback_t)(pueo_daq_t * daq, uint32_t idx);
@@ -127,7 +126,7 @@ typedef int (*pueo_daq_event_ready_callback_t)(pueo_daq_t * daq, uint32_t idx);
     .fragment_in = 0x5278,                  \
   },                                        \
   .timeout = {.tv_sec = 0, .tv_nsec = 1e7 }, \
-  .max_attempts = 10, .debug = false
+  .max_attempts = 10, .debug = false, .turfio_mask = 0x0
 
 
 
@@ -176,12 +175,8 @@ int pueo_daq_soft_trig(pueo_daq_t * daq);
 
 /** Copies out an event, then releases the DAQ buffer.
  * If none is ready, this will block. (You can pass NULL to just eat an event).
- * Nsample capacity is the number of samples that will fit in this event (only so many will be copied per event)
  * */
-int pueo_daq_get_event(pueo_daq_t * daq,  pueo_daq_event_data_t * dest, uint32_t nsample_capacity);
-
-/** Returns the number of samples required to store the next DAQ event */
-uint32_t pueo_daq_get_event_nsamples(pueo_daq_t * daq);
+int pueo_daq_get_event(pueo_daq_t * daq,  pueo_daq_event_data_t * dest);
 
 /** Blocks until an event is ready */
 void pueo_daq_wait_event(pueo_daq_t * daq);
@@ -208,5 +203,30 @@ int pueo_daq_reset(pueo_daq_t * daq);
 // Right now these are also locking but that will probably change
 int pueo_daq_write(pueo_daq_t *daq, uint32_t wraddr, uint32_t data);
 int pueo_daq_read(pueo_daq_t *daq, uint32_t rdaddr, uint32_t * data);
+
+
+typedef struct pueo_daq_stats
+{
+  uint32_t turfio_words_recv[4];
+  uint32_t qwords_sent;
+  uint32_t events_sent;
+} pueo_daq_stats_t;
+
+#define PUEODAQ_STATS_JSON_FORMAT_WITH_PREFIX(prefix)  prefix "\"turfio0_recv_bytes\": %u,\n"\
+                                                       prefix "\"turfio1_recv_bytes\": %u,\n"\
+                                                       prefix "\"turfio2_recv_bytes\": %u,\n"\
+                                                       prefix "\"turfio3_recv_bytes\": %u,\n"\
+                                                       prefix "\"bytes_sent\": %u,\n"\
+                                                       prefix "\"events_sent\": %u,\n"
+
+#define PUEODAQ_STATS_JSON_FORMAT PUEODAQ_STATS_JSON_FORMAT_WITH_PREFIX("  ")
+
+#define PUEODAQ_STATS_VALS(s)  4*s.turfio_words_recv[0], 4*s.turfio_words_recv[1], 4*s.turfio_words_recv[2], 4*s.turfio_words_recv[3], 8*s.qwords_sent, s.events_sent
+
+
+int pueo_daq_get_stats(pueo_daq_t * daq,  pueo_daq_stats_t * stats);
+
+
+
 
 

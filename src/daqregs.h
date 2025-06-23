@@ -1,11 +1,11 @@
-#ifndef _TURF_REGS_H
-#define _TURF_REGS_H
+#ifndef _DAQ_REGS_H
+#define _DAQ_REGS_H
 
 #include <stdint.h>
 #include <stdbool.h>
 
 
-typedef struct turfreg
+typedef struct reg
 {
   uint32_t addr;  //address of this register
   uint32_t reladdr;
@@ -14,7 +14,7 @@ typedef struct turfreg
   uint32_t mask;
   bool ro;
   const char * name;
-} turfreg_t;
+} reg_t;
 
 enum
 {
@@ -32,18 +32,18 @@ enum
 #define REG_RO(BASE,reladdr) MAKE_REG(BASE, reladdr, 0, 32, true)
 #define REG(BASE,reladdr) MAKE_REG(BASE, reladdr, 0, 32, false)
 #define BF(BASE, reladdr, off, len) MAKE_REG(BASE,reladdr,off,len,false)
+#define BF_RO(BASE, reladdr, off, len) MAKE_REG(BASE,reladdr,off,len,true)
 
-#define DEF_DECLARE(NAME, DEF) turfreg_t NAME;
+#define DEF_DECLARE(NAME, DEF) reg_t NAME;
 #define DEF_DEFINE(NAME, DEF) .NAME = { DEF, .name = #NAME },
 
 
 #define REG_GROUP(NAME, BASE, REGS)\
-  static const struct {\
+static const struct {\
     uint32_t base; \
     const char *name;\
     REGS(DEF_DECLARE,BASE)\
   } NAME = { .base = BASE, .name = #NAME, REGS(DEF_DEFINE, BASE)  }
-
 
 
 
@@ -64,12 +64,17 @@ DEF(bridgestat,     REG(BASE, 0x1004))
 REG_GROUP(turf, 0, TURF_REGS);
 
 #define EVENT_REGS(DEF, BASE)\
-DEF(reset_events, BF(BASE,  0x0, 0, 1))\
-DEF(mask,         BF(BASE,  0x0, 8, 4))\
-DEF(ndwords0,     REG_RO(BASE, 0x010))\
-DEF(ndwords1,     REG_RO(BASE, 0x014))\
-DEF(ndwords2,     REG_RO(BASE, 0x018))\
-DEF(ndwords3,     REG_RO(BASE, 0x01C))
+DEF(event_reset,    BF(BASE,  0x0, 0, 1))\
+DEF(event_in_reset, BF_RO(BASE,  0x0, 0, 1))\
+DEF(mask,           BF(BASE,  0x0, 8, 4))\
+DEF(ndwords0,       REG_RO(BASE, 0x010))\
+DEF(ndwords1,       REG_RO(BASE, 0x014))\
+DEF(ndwords2,       REG_RO(BASE, 0x018))\
+DEF(ndwords3,       REG_RO(BASE, 0x01C))\
+DEF(outqwords,      REG_RO(BASE, 0x020))\
+DEF(outevents,      REG_RO(BASE, 0x024))\
+
+
 
 REG_GROUP(turf_event, 0x18000, EVENT_REGS);
 
@@ -102,7 +107,6 @@ DEF(last_pps,       REG_RO(BASE,0x0c))    \
 DEF(llast_pps,      REG_RO(BASE,0x010))
 
 REG_GROUP(turf_time, 0x1a000, TIME_REGS);
-
 
 
 //undef some names that might clash

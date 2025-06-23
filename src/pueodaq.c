@@ -1,7 +1,7 @@
 #define _GNU_SOURCE
 
 #include "turfeth.h"
-#include "turfregs.h"
+#include "daqregs.h"
 #include <arpa/inet.h>
 #include <netinet/ip.h>
 #include <assert.h>
@@ -48,7 +48,7 @@ struct fragment
 
 
 static int __attribute__((nonnull))
-pueo_daq_read_reg(pueo_daq_t * daq, const turfreg_t * reg, uint32_t * val)
+read_reg(pueo_daq_t * daq, const reg_t * reg, uint32_t * val)
 {
 
   int r = pueo_daq_read(daq, reg->addr, val);
@@ -58,7 +58,7 @@ pueo_daq_read_reg(pueo_daq_t * daq, const turfreg_t * reg, uint32_t * val)
 }
 
 static int  __attribute__((nonnull))
-pueo_daq_write_reg(pueo_daq_t * daq, const turfreg_t * reg, uint32_t val)
+write_reg(pueo_daq_t * daq, const reg_t * reg, uint32_t val)
 {
   assert (!reg->ro);
   val <<= reg->offs;
@@ -66,7 +66,7 @@ pueo_daq_write_reg(pueo_daq_t * daq, const turfreg_t * reg, uint32_t val)
   if (reg->len!=32)
   {
     uint32_t current;
-    if (pueo_daq_read_reg(daq, reg, &current))
+    if (read_reg(daq, reg, &current))
     {
       fprintf(stderr,"Could not read old reg\n");
       return -1;
@@ -132,6 +132,7 @@ struct reader_thread_setup
   uint16_t tnum;
   pueo_daq_t * daq;
 };
+
 
 
 #define DFLT_RECV_THREADS 4
@@ -214,6 +215,7 @@ struct pueo_daq
 
   // The reader threads
   pthread_t reader_threads[DAQ_MAX_READER_THREADS];
+  struct reader_thread_setup reader_thread_setups[DAQ_MAX_READER_THREADS];
 
   // The control thread (acks and nacks and address assignment)
   pthread_t ctl_thread;
@@ -538,15 +540,15 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg)
   errno = 0;
   daq->fragments = mmap(NULL,
       daq->nfragments * (sizeof(turf_fraghdr_t) + daq->cfg.fragment_size),
-      PROT_READ | PROT_WRITE, MAP_ANONYMOUS, -1,0);
+      PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1,0);
 
   daq->fragments_bitmap = calloc(daq->fragments_bitmap_size, sizeof(*daq->fragments_bitmap));
 
-  if (! daq->fragments || !daq->fragments_bitmap)
+  if (daq->fragments == (void*) -1 || !daq->fragments_bitmap)
   {
     fprintf(stderr,"Couldn't allocate fragments :( %s\n", strerror(errno));
+    daq->fragments = NULL;
     goto bail;
-
   }
 
   //if our nfragments is not a multiple of 64, the last word will contain some unusable bits (sorry Lawrence)
@@ -563,11 +565,12 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg)
 
   errno=0;
   daq->event_bufs = mmap( NULL, daq->cfg.n_event_bufs * daq->evbuf_sz,
-                          PROT_READ | PROT_WRITE, MAP_ANONYMOUS, -1, 0);
+                          PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
 
-  if (! daq->event_bufs)
+  if (daq->event_bufs ==(void*) -1)
   {
     fprintf(stderr,"Couldn't mmap event_bufs :( %s\n", strerror(errno));
+    daq->event_bufs = NULL;
     goto bail;
 
   }
@@ -588,7 +591,7 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg)
 
 
   // open UDP sockets
-#define SETUP_SOCK(which,port,opts,dest_port) \
+#define SETUP_SOCK(which,port,opts, opt_vals, dest_port) \
   do {\
     daq->net.which = socket(AF_INET, SOCK_DGRAM, 0);\
     if (daq->net.which < 0) { \
@@ -599,7 +602,7 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg)
       int iopt = 0; int optval = 1;\
       while( ((int*) opts)[iopt])\
       {\
-        if (setsockopt(daq->net.which, SOL_SOCKET, ((int*)opts)[iopt++], &optval, sizeof(optval)))\
+        if (setsockopt(daq->net.which, SOL_SOCKET, ((int*)opts)[iopt++], opt_vals ? &((int*)opt_vals)[iopt] : &optval, sizeof(optval)))\
         {\
           fprintf(stderr,"Couldn't setsockopt :(\n"); goto bail;\
         }\
@@ -621,14 +624,15 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg)
   } while(0)
 
 
-  SETUP_SOCK(daq_ctl_sck, daq->cfg.daq_ports.control_in,0,0);
-  SETUP_SOCK(daq_frgctl_sck, daq->cfg.daq_ports.fragcontrol_in,0,0);
+  SETUP_SOCK(daq_ctl_sck, daq->cfg.daq_ports.control_in,0,0, 0);
+  SETUP_SOCK(daq_frgctl_sck, daq->cfg.daq_ports.fragcontrol_in,0,0, 0);
 
   for (unsigned i = 0; i < daq->cfg.n_recvthreads; i++ )
   {
     //TODO: we should protect against multiple instances here by using some sort of external lock on the port
-    int opts[] = { daq->cfg.n_recvthreads == 1 ? 0 : SO_REUSEPORT, 0 };
-    SETUP_SOCK(daq_frg_sck[i], daq->cfg.daq_ports.fragment_in,opts,0);
+    int opts[] = { SO_RCVBUF, daq->cfg.n_recvthreads == 1 ? 0 : SO_REUSEPORT, SO_RCVBUF, 0 };
+    int opt_vals[] = {  (1 << 20) , 1 , 0 };
+    SETUP_SOCK(daq_frg_sck[i], daq->cfg.daq_ports.fragment_in,opts,opt_vals,0);
   }
 
   //set up dest addresses
@@ -645,7 +649,7 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg)
   //set up threads
   pthread_sigmask(SIG_BLOCK, &newset, &oldset) ;
 
-  if (pthread_create(&daq->ctl_thread, NULL, control_thread, daq)) 
+  if (pthread_create(&daq->ctl_thread, NULL, control_thread, daq))
   {
     pthread_sigmask(SIG_SETMASK, &oldset, NULL);
     fprintf(stderr,"Could not create ctl thread\n");
@@ -654,8 +658,9 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg)
 
   for (int i = 0; i < daq->cfg.n_recvthreads; i++)
   {
-    struct reader_thread_setup s = {.tnum = i, .daq = daq };
-    if (pthread_create(&daq->reader_threads[i], NULL, reader_thread, &s))
+    daq->reader_thread_setups[i].tnum = i,
+    daq->reader_thread_setups[i].daq = daq;
+    if (pthread_create(&daq->reader_threads[i], NULL, reader_thread, &daq->reader_thread_setups[i]))
     {
       fprintf(stderr, "Could not create reader_thread_%d\n", i);
       pthread_sigmask(SIG_SETMASK, &oldset, NULL);
@@ -665,6 +670,7 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg)
 
   pthread_sigmask(SIG_SETMASK, &oldset, NULL);
 
+ 
   // this prepares the event interface
 
   if (pueo_daq_reset(daq))
@@ -687,11 +693,34 @@ int pueo_daq_start(pueo_daq_t * daq)
 {
   atomic_store(&daq->state, PUEODAQ_STARTING);
 
+
+  // read and write the bit
+  uint32_t reset = 0;
+  if (read_reg(daq, &turf_event.event_in_reset, &reset))
+  {
+    fprintf(stderr,"Could_not read event_in_reset\n");
+    return 1;
+  }
+  if (!reset)
+  {
+    if (write_reg(daq, &turf_event.event_reset, 1)
+        || write_reg(daq, &turf_event.event_reset, 0))
+    {
+      fprintf(stderr,"Could not write event_reset\n");
+
+      return 1;
+    }
+
+  }
+  else {
+    printf("Already in reset???\n");
+  }
+
   // open the event interface
   turf_ctl_t ctl  = {.BIT =
     {
       .COMMAND = TURF_OP_COMMAND,
-      .PAYLOAD = ((uint64_t)htons(daq->cfg.daq_ports.fragment_in)) | ( ((uint64_t)htonl(daq->net.our_ip.s_addr)) << 16)
+      .PAYLOAD = ((uint64_t)(daq->cfg.daq_ports.fragment_in)) | ( ((uint64_t)htonl(daq->net.our_ip.s_addr)) << 16)
     }
   };
 
@@ -702,34 +731,31 @@ int pueo_daq_start(pueo_daq_t * daq)
   }
 
 
-  // read and write the bit
-  uint32_t reset = 0;
-  if (pueo_daq_read_reg(daq, &turf_event.reset_events, &reset))
+ //turfio mask, etc.
+  if (write_reg(daq, &turf_event.mask, daq->cfg.turfio_mask))
   {
-    fprintf(stderr,"Could not read reset_events\n");
-    return 1;
+    fprintf(stderr,"Couldn't write turfio mask\n");
   }
-  if (!reset)
+
+  if (write_reg(daq, &turf_trig.latency, 200))
   {
-    if (pueo_daq_write_reg(daq, &turf_event.reset_events, 1)
-        || pueo_daq_write_reg(daq, &turf_event.reset_events, 0))
-    {
-      fprintf(stderr,"Could not write reset_events\n");
-
-      return 1;
-    }
-
+    fprintf(stderr,"Couldn't write trig latency\n");
   }
-  else {
-    printf("Already in reset???\n");
+
+  if (write_reg(daq, &turf_trig.offset, 0))
+  {
+    fprintf(stderr,"Couldn't write trig offset\n");
   }
+
+
+
 
   //setup all acks, batch in groups of TURF_MAX_ACKS
   int nallow = daq->cfg.max_in_flight;
   daq->num_events_allowed = nallow;
   for (unsigned i = 0; i < TURF_NUM_ADDR; i+=TURF_MAX_ACKS)
   {
-    turf_ack_t acks[TURF_MAX_ACKS];
+    turf_ack_t acks[TURF_MAX_ACKS] = {};
     for (unsigned j = 0 ; j < TURF_MAX_ACKS; j++)
     {
       acks[j].BIT.ADDR = i+j;
@@ -747,7 +773,7 @@ int pueo_daq_start(pueo_daq_t * daq)
   }
 
   daq->num_addr_assigned = TURF_NUM_ADDR;
-  if (pueo_daq_write_reg(daq, &turf_trig.runcmd, RUNCMD_RESET))
+  if (write_reg(daq, &turf_trig.runcmd, RUNCMD_RESET))
   {
     fprintf(stderr,"Could not run runcmd\n");
     return 1;
@@ -760,12 +786,10 @@ int pueo_daq_start(pueo_daq_t * daq)
 
 int pueo_daq_stop(pueo_daq_t * daq)
 {
-  int expected = PUEODAQ_RUNNING;
-  atomic_compare_exchange_strong(&daq->state, &expected, PUEODAQ_IDLE);
-
-  if (expected == PUEODAQ_RUNNING)
+  int state = atomic_load(&daq->state);
+  if (state == PUEODAQ_RUNNING || state == PUEODAQ_UNINIT)
   {
-    if (pueo_daq_write_reg(daq, &turf_trig.runcmd, RUNCMD_STOP))
+    if (write_reg(daq, &turf_trig.runcmd, RUNCMD_STOP))
     {
       fprintf(stderr,"Could not run runcmd\n");
       return 1;
@@ -781,21 +805,22 @@ int pueo_daq_stop(pueo_daq_t * daq)
 
   // close the event interface
   turf_ctl_t ctl  = {.BIT = { .COMMAND = TURF_CL_COMMAND }};
-  return acked_send(daq, daq->net.daq_ctl_sck, TURF_PORT_CTL_REQ, ctl, NULL, &CTL_WAIT_CHECK(ctl));
+  int ret = acked_send(daq, daq->net.daq_ctl_sck, TURF_PORT_CTL_REQ, ctl, NULL, &CTL_WAIT_CHECK(ctl));
+  atomic_store(&daq->state, PUEODAQ_IDLE);
 
-  return 0;
+  return ret;
 }
 
 int pueo_daq_reset(pueo_daq_t * daq)
 {
 
+  //make sure we're stopped
+  pueo_daq_stop(daq);
+
 
   //If we have seen events before, we have to clear the event bufs
   if (atomic_load(&daq->num_events_discovered))
   {
-    //make sure we're stopped
-    pueo_daq_stop(daq);
-
     for (int i = 0; i < daq->cfg.n_event_bufs; i++)
     {
       event_buf_reset(event_buf_get(daq,i));
@@ -810,11 +835,11 @@ int pueo_daq_reset(pueo_daq_t * daq)
   daq->num_events_allowed = 0;
 
   // reset tags on TURFS
-  pueo_daq_read_reg(daq,&turf.turfid,&daq->census.turfid);
+  read_reg(daq,&turf.turfid,&daq->census.turfid);
   printf("TURFID: %0x\n", daq->census.turfid);
 
   //read date version
-  pueo_daq_read_reg(daq,&turf.dateversion,&daq->census.turf_datever);
+  read_reg(daq,&turf.dateversion,&daq->census.turf_datever);
   printf("DATEVER: %0x\n", daq->census.turf_datever);
 
   //TODO take a census of who we have
@@ -824,7 +849,6 @@ int pueo_daq_reset(pueo_daq_t * daq)
   // close the event interface
   pueo_daq_stop(daq);
 
-  // setup fragments etc.
   // get max fragments
 
   turf_ctl_t ctl = { .BIT.COMMAND = TURF_PR_COMMAND };
@@ -850,7 +874,7 @@ int pueo_daq_reset(pueo_daq_t * daq)
 
   */
 
-  atomic_store(&daq->state,PUEODAQ_IDLE);
+
 
   return 0;
 }
@@ -918,7 +942,7 @@ int pueo_daq_write(pueo_daq_t * daq, uint32_t wraddr, uint32_t data)
   pthread_mutex_lock(&daq->net.tx_lock);
   uint8_t tag = daq->net.wr_tag++;
   turf_wrreq_t msg= {.BIT={.ADDR = wraddr & 0x0fffffff, .TAG = tag, .WRDATA = data}};
-  int r = acked_send(daq, daq->net.daq_ctl_sck, TURF_PORT_READ_REQ, msg, NULL, &WRITE_WAIT_CHECK(wraddr, tag));
+  int r = acked_send(daq, daq->net.daq_ctl_sck, TURF_PORT_WRITE_REQ, msg, NULL, &WRITE_WAIT_CHECK(wraddr, tag));
   pthread_mutex_unlock(&daq->net.tx_lock);
 
   return r;
@@ -968,16 +992,21 @@ void * reader_thread(void *arg)
     }
 
     //otherwise we're going to try to receive stuff
-    struct sockaddr src;
-    socklen_t src_len;
+    struct sockaddr_in src;
+    socklen_t src_len = sizeof(src);;
     //get the index of a free fragment
     uint16_t frag_i = fragment_find_free(daq, s->tnum);
     struct fragment * frag = fragment_get(daq, frag_i);
+//    printf("Thd  %d trying to receive fragment %d (0x%p)\n", s->tnum, frag_i, frag);
 
     errno = 0;
-    ssize_t nrecv = recvfrom(sck_frg, frag, daq->cfg.fragment_size + sizeof(turf_fraghdr_t),0, &src, &src_len);
+    ssize_t nrecv = recvfrom(sck_frg, frag, daq->cfg.fragment_size + sizeof(turf_fraghdr_t),0, (struct sockaddr*) &src, &src_len);
 
-    if (nrecv  < 0) continue; //TODO do better, though often this is EINTR
+    if (nrecv  < 0)
+    {
+      printf("thd %d: %s\n", s->tnum,strerror(errno));
+      continue; //TODO do better, though often this is EINTR
+    }
 
     uint16_t fragnum = frag->hd.BIT.FRAGMENT;
     uint16_t addr = frag->hd.BIT.ADDR;
@@ -994,6 +1023,7 @@ void * reader_thread(void *arg)
     if (atomic_compare_exchange_strong(&ev->nfragments_expected,&zero, (evlen + daq->cfg.fragment_size -1) / daq->cfg.fragment_size))
     {
 
+      printf("thd %d recvd %ld bytes from unencountered address (frag %d, addr %hu, evbuf: 0x%p)\n", s->tnum, nrecv, frag_i, addr, ev);
       clock_gettime(CLOCK_MONOTONIC,&now);
       uint64_t packed_now = pack_time(now);
 
@@ -1024,11 +1054,14 @@ void * reader_thread(void *arg)
 
     //add fragments received
     uint16_t prior = atomic_fetch_add(&ev->nfragments_rcvd, 1);
+    printf("[fragnum=%hu][addr=%hu](nrecv=%hu/%hu) @ %lld.%09lld\n",fragnum, addr, prior, ev->nfragments_expected, now.tv_sec, now.tv_nsec);
 
     // we finished.I think this is ok since we can't get more than nfagments_expected fragments, right?
     if (prior == ev->nfragments_expected -1)
     {
       uint32_t rcv_idx = atomic_fetch_add(&daq->num_events_received, 1);
+
+      printf("thd %d recvd last %ld bytes from address (frag %d, addr %hu, evbuf: 0x%p)\n", s->tnum, nrecv, frag_i, addr, ev);
 
       // schedule an ack if we have room for another event
       allow_ack(daq, ev->address);
@@ -1050,6 +1083,12 @@ int pueo_daq_dump(pueo_daq_t * daq, FILE * stream, int flags)
   ATOMIC_PRINT(num_events_received);
   ATOMIC_PRINT(num_events_dispensed);
 
+  pueo_daq_stats_t st;
+  pueo_daq_get_stats(daq, &st);
+
+  printf("{\n" PUEODAQ_STATS_JSON_FORMAT"}\n", PUEODAQ_STATS_VALS(st));
+
+
   return r;
 }
 
@@ -1067,7 +1106,7 @@ void pueo_daq_wait_event(pueo_daq_t * daq)
   while (!pueo_daq_nready(daq)) usleep(500);
 }
 
-int pueo_daq_get_event(pueo_daq_t * daq, pueo_daq_event_data_t * dest, uint32_t nsample_capacity)
+int pueo_daq_get_event(pueo_daq_t * daq, pueo_daq_event_data_t * dest)
 {
   pueo_daq_wait_event(daq);
 
@@ -1080,46 +1119,17 @@ int pueo_daq_get_event(pueo_daq_t * daq, pueo_daq_event_data_t * dest, uint32_t 
   memcpy(&dest->header, fragment_get(daq, ev->fragments[0])->buf, ev->header_size);
 
 
-  uint32_t nsamples_readout = ev->nsamples;
   uint32_t last_fragment_size = ev->nbytes_expected % (daq->cfg.fragment_size + sizeof(turf_fraghdr_t));
 
 
-  //TODO excise the non-existent surfs
-  //TODO allow setting a mask
-  //the happy case
-  if (nsamples_readout <= nsample_capacity)
+  //only support this for now, could handle truncated easily, adjustable with a bit more difficulty.
+  assert (ev->nsamples == PUEODAQ_NSAMP);
+
+  void * p = dest->waveform_data;
+  p = mempcpy(p, fragment_get(daq,ev->fragments[0])->buf + ev->header_size, daq->cfg.fragment_size-ev->header_size);
+  for (int i = 1; i < ev->nfragments_expected; i++)
   {
-    dest->nsamples_per_event = nsamples_readout;
-    void * p = dest->waveform_data;
-    p = mempcpy(p, fragment_get(daq,ev->fragments[0])->buf + ev->header_size, daq->cfg.fragment_size-ev->header_size);
-    for (int i = 1; i < ev->nfragments_expected; i++)
-    {
       p = mempcpy( p, fragment_get(daq,ev->fragments[i])->buf, i == ev->nfragments_expected - 1 ? last_fragment_size : daq->cfg.fragment_size);
-    }
-  }
-  else if (nsample_capacity == 0)
-  {
-    //this is easy, we do nothing!
-  }
-  else // we only have room for truncated data. TODO this can probably be optimized
-  {
-    for (int i = 0; i < 224; i++)
-    {
-      int start_byte = ev->header_size + 2*nsamples_readout * i;
-      int start_fragment = start_byte / daq->cfg.fragment_size;
-      int end_fragment = (start_byte + nsample_capacity * 2 ) / daq->cfg.fragment_size;
-
-      for (int f = start_fragment; f <= end_fragment; f++)
-      {
-        struct fragment * frag = fragment_get(daq,ev->fragments[f]);
-        int start = f == start_fragment ? (start_byte % daq->cfg.fragment_size) : 0;
-        void * p = dest->waveform_data;
-
-        // we will never have to worry about the partial fragment since we're truncated anyways
-        int end = f == end_fragment ? (start_byte+nsample_capacity * 2) % daq->cfg.fragment_size : daq->cfg.fragment_size;
-        p = mempcpy(p, frag->buf + start, end-start);
-      }
-    }
   }
 
 
@@ -1151,7 +1161,7 @@ void* control_thread(void * arg)
 
   // allow up to TURF_MAX_ACKS acqs at a time since why not
 
-  turf_ack_t acks[TURF_MAX_ACKS];
+  turf_ack_t acks[TURF_MAX_ACKS] = {};
   unsigned num_acks = 0;
 
   //more than one nack is overkill
@@ -1183,8 +1193,9 @@ void* control_thread(void * arg)
     // we have room for more events if the number allowed minus the number
     // dispensed is less than to the number of event bufs we  have
     uint32_t capacity = daq->num_events_allowed - dispensed;
+    uint32_t rcvd = atomic_load(&daq->num_events_received);
 
-    if (capacity)
+    if (capacity && rcvd > dispensed)
     {
       num_acks = 0;
       for (unsigned w = 0; w < sizeof(daq->ack_map) / sizeof(*daq->ack_map); w++)
@@ -1209,7 +1220,6 @@ void* control_thread(void * arg)
         }
       }
 
-
       if (num_acks > 0)
       {
         if (acked_multisend(daq, daq->net.daq_frgctl_sck, TURF_PORT_ACK, num_acks, acks, NULL, &ACK_WAIT_CHECK(acks[TURF_MAX_ACKS-1].BIT.ADDR, acks[TURF_MAX_ACKS-1].BIT.TAG, acks[TURF_MAX_ACKS-1].BIT.ALLOW)))
@@ -1233,9 +1243,12 @@ void* control_thread(void * arg)
       }
 
     }
+    else
+    {
+      usleep(1000);
+    }
 
     // TODO go through and see if there is anything really old that needs to be nacked
-
   }
   return NULL;
 }
@@ -1243,6 +1256,21 @@ void* control_thread(void * arg)
 
 int pueo_daq_soft_trig(pueo_daq_t * daq)
 {
-  return pueo_daq_write_reg(daq, &turf_trig.softrig, 1);
+  return write_reg(daq, &turf_trig.softrig, 1);
+}
+
+int pueo_daq_get_stats(pueo_daq_t * daq, pueo_daq_stats_t * st)
+{
+  if (
+      read_reg(daq, &turf_event.ndwords0, &st->turfio_words_recv[0]) ||
+      read_reg(daq, &turf_event.ndwords1, &st->turfio_words_recv[1]) ||
+      read_reg(daq, &turf_event.ndwords2, &st->turfio_words_recv[2]) ||
+      read_reg(daq, &turf_event.ndwords3, &st->turfio_words_recv[3]) ||
+      read_reg(daq, &turf_event.outqwords, &st->qwords_sent) ||
+      read_reg(daq, &turf_event.outevents, &st->events_sent))
+  {
+    return 1;
+  }
+  return 0;
 }
 
