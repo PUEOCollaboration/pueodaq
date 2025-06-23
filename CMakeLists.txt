@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.20) 
 project(pueodaq) 
 
-
 ## Set build type #
 if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Default build type: RelWithDebInfo" FORCE) 
 
 endif()
+
 
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads REQUIRED)
@@ -26,6 +26,8 @@ target_compile_options(pueodaq PRIVATE ${WARNFLAGS})
 add_library(pueodaq_static STATIC ${LIBSRC})
 target_compile_options(pueodaq_static PRIVATE ${WARNFLAGS})
 
+set_property(TARGET pueodaq PROPERTY C_STANDARD 23)
+set_property(TARGET pueodaq_static PROPERTY C_STANDARD 23)
 
 #################### Tests and test executables######################
 add_executable(turfid test/turfid.c) 
