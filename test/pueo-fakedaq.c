@@ -30,7 +30,7 @@ int ready(pueo_daq_t * daq, uint32_t idx)
   char fname[512];
   sprintf(fname,"%s/fakedaq_%05d.dat", outdir, idx);
   FILE * f  = fopen(fname,"w");
-  fwrite(&d, sizeof(d), 1, f);
+  fwrite(&d, sizeof(*d), 1, f);
   fclose(f);
   free(d);
   printf("Written to %s\n", fname);
