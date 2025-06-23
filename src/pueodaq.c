@@ -342,7 +342,7 @@ typedef union acked_msg_ptr
 
 
 
-static_assert(sizeof(acked_msg_t) == sizeof(uint64_t));
+static_assert(sizeof(acked_msg_t) == sizeof(uint64_t), "aked_msg_t != 8 bytes");
 
 static int acked_multisend(pueo_daq_t * daq, int sock, uint16_t port, size_t Nsend,
     acked_msg_ptr_t snd, acked_msg_ptr_t rcv, struct blocking_wait_check * check)
@@ -599,13 +599,14 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg)
       goto bail; \
     }\
     if (opts != NULL) { \
-      int iopt = 0; int optval = 1;\
+      int iopt = 0; int defaultoptval = 1;\
       while( ((int*) opts)[iopt])\
       {\
-        if (setsockopt(daq->net.which, SOL_SOCKET, ((int*)opts)[iopt++], opt_vals ? &((int*)opt_vals)[iopt] : &optval, sizeof(optval)))\
+        if (setsockopt(daq->net.which, SOL_SOCKET, ((int*)opts)[iopt], opt_vals != NULL ? &((int*)opt_vals)[iopt] : &defaultoptval, sizeof(int)))\
         {\
           fprintf(stderr,"Couldn't setsockopt :(\n"); goto bail;\
         }\
+        iopt++;\
       }\
     }\
     struct sockaddr_in addr = {.sin_family = AF_INET, .sin_port = htons(port), .sin_addr = {.s_addr = htonl(INADDR_ANY)} }; \
