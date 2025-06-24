@@ -561,7 +561,7 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg)
   }
 
 
-  daq->evbuf_sz = sizeof(struct event_buf) + ceil(1.0*daq->cfg.max_ev_size / daq->cfg.fragment_size);
+  daq->evbuf_sz = sizeof(struct event_buf) + max_fragments_per_event * sizeof(uint32_t);
 
   errno=0;
   daq->event_bufs = mmap( NULL, daq->cfg.n_event_bufs * daq->evbuf_sz,
