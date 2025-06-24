@@ -1056,7 +1056,7 @@ void * reader_thread(void *arg)
 
     if (fragnum == 0) //do some preprocessing on header
     {
-      int surf_header_size = frag->buf[frag->buf[0]+1];
+      int surf_header_size = frag->buf[frag->buf[0]];
       ev->header_size =  (surf_header_size + frag->buf[0] +1)*2;
       ev->nsamples = (ev->nbytes_expected -  ev->header_size) / PUEODAQ_NCHAN / 2;
     }
