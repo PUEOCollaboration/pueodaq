@@ -37,6 +37,11 @@ int ready(pueo_daq_t * daq, uint32_t idx)
   printf("%d bytes written to %s\n", nb*sizeof(pueo_daq_event_data_t), fname);
 }
 
+void usage()
+{
+  printf("pueo-fakedaq [-I SOFTTRIGINTERVAL=1.0] [-T TURFIOMASK=0x0] [-L FRAGLEN=1024] [-t NUMRDRTHREADS=1] [-M MAXINFLIGHT=32] [-o OUTDIR=/tmp] [-d DEBUGLEVEL=1] [-h]\n"); 
+
+}
 int main (int nargs, char ** args)
 {
 
@@ -78,6 +83,16 @@ int main (int nargs, char ** args)
       else if (!strcmp(args[i],"-d") && !last)
       {
         debug = atoi(args[++i]);
+      }
+      else if (!strcmp(args[i],"-h"))
+      {
+        usage();
+        return 0;
+      }
+      else
+      {
+        usage();
+        return 1;
       }
     }
 

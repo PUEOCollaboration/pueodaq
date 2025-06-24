@@ -85,21 +85,38 @@ typedef struct pueo_daq_config
 /** Opaque handle to DAQ*/
 typedef struct pueo_daq pueo_daq_t;
 
+typedef union pueo_daq_event_header
+{
+   struct
+   {
+     uint16_t header_words_m1; // number of header words after this one
+     uint16_t header_version;
+     uint32_t event_number;
+     uint32_t event_second;
+     uint32_t event_time;
+     uint32_t last_pps;
+     uint32_t llast_pps;
+     uint32_t trigger_meta[4];
+     uint16_t reserved[34];
+     uint16_t tfio_mask :4;
+     uint16_t tid : 12;
+     uint16_t surf_header_words;
+     uint64_t transposed_surf_headers[4];
+   } vals;
+
+   struct
+   {
+     uint8_t v[PUEODAQ_MAX_HEADER_SIZE]; // reserve 1024 bytes (the maximum)
+   } bytes;
+
+
+} pueo_daq_event_header_t;
+
+
 
 typedef struct pueo_daq_event_data
 {
-  union
-  {
-   struct
-   {
-     uint16_t hdr_size_min_div4_m1;
-     uint16_t hdr_version;
-   } tag;
-   struct
-   {
-     uint8_t v[PUEODAQ_MAX_HEADER_SIZE];
-   } bytes;
-  } header;
+  pueo_daq_event_header_t header;
   int16_t waveform_data[PUEODAQ_NCHAN][PUEODAQ_NSAMP]; //TODO parameterize this, make it flexible maybe. This used to be flexible but right now the firmware isn't flexible so...
 } pueo_daq_event_data_t;
 

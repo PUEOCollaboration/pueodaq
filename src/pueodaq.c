@@ -271,7 +271,7 @@ static int blocking_wait_for_response(pueo_daq_t * daq,  int sck, struct sockadd
   fd.fd = sck;
   fd.events = POLLIN;
   int ready = ppoll (&fd, 1, &daq->cfg.timeout, NULL);
-  if (!ready || !(fd.revents & POLLIN ))  
+  if (!ready || !(fd.revents & POLLIN ))
   {
     if (daq->cfg.debug) fprintf(stderr,"bwait: Timeout reached..\n");
     return -1;
@@ -373,7 +373,7 @@ static int acked_multisend(pueo_daq_t * daq, int sock, uint16_t port, size_t Nse
     {
       if (daq->cfg.debug > 2)
       {
-        printf( "<   0x%016lx\n", check->val);
+        printf(" <   0x%016lx\n", check->val);
       }
       if (rcv.u) *rcv.u= check->val;
       ret = 0;
@@ -864,7 +864,7 @@ int pueo_daq_reset(pueo_daq_t * daq)
       return 1;
   }
   if (daq->cfg.debug > 1) 
-    printf("0x%lx [mask: 0x%lx addr: %lu  fraglen: %lu]\n",  ctl_rd.RAW,  ctl_rd.RAW & 0xffff, 1+((ctl_rd.RAW >> 16) & 0xffff), (8 +(( ctl_rd.RAW >> 32) &0xffff)) & 0xff80);
+    printf("PR: 0x%lx [fragsrcmask: 0x%lx addr: %lu  fraglen: %lu]\n",  ctl_rd.RAW,  ctl_rd.RAW & 0xffff, 1+((ctl_rd.RAW >> 16) & 0xffff), (8 +(( ctl_rd.RAW >> 32) &0xffff)) & 0xff80);
 
   uint64_t wr_payload = (daq->cfg.fragment_size-1) & 0xfff8; //drop lowest 3 bits?
   wr_payload <<=32;
@@ -877,7 +877,7 @@ int pueo_daq_reset(pueo_daq_t * daq)
       return 1;
   }
 
-  if (daq->cfg.debug > 1) printf("0x%lx [mask: 0x%lx  addr: %lu  fraglen: %lu]\n", ctl_wr.RAW,  ctl_wr.RAW & 0xffff, 1+((ctl_wr.RAW >> 16) & 0xffff), ( 8+ (( ctl_wr.RAW >> 32) &0xffff)) & 0xff80);
+  if (daq->cfg.debug > 1) printf("PW: 0x%lx [fragsrcmask: 0x%lx  addr: %lu  fraglen: %lu]\n", ctl_wr.RAW,  ctl_wr.RAW & 0xffff, 1+((ctl_wr.RAW >> 16) & 0xffff), ( 8+ (( ctl_wr.RAW >> 32) &0xffff)) & 0xff80);
 
 
   return 0;
@@ -896,15 +896,17 @@ void pueo_daq_destroy(pueo_daq_t * daq)
   for (unsigned i = 0; i < daq->cfg.n_recvthreads; i++)
   {
     // send a signal to each thread to get it to stop
-    pthread_cancel(daq->reader_threads[i]);
+    if (daq->reader_thread_setups[i].daq)
+      pthread_cancel(daq->reader_threads[i]);
   }
   for (unsigned i = 0; i < daq->cfg.n_recvthreads; i++)
   {
-    pthread_join(daq->reader_threads[i], NULL);
+    if (daq->reader_thread_setups[i].daq)
+      pthread_join(daq->reader_threads[i], NULL);
     close(daq->net.daq_frg_sck[i]);
   }
 
-  // Send a CL 
+  // Send a CL
   // close the event interface
   turf_ctl_t ctl  = {.BIT = { .COMMAND = TURF_CL_COMMAND }};
   if ( acked_send(daq, daq->net.daq_ctl_sck, TURF_PORT_CTL_REQ, ctl, NULL, &CTL_WAIT_CHECK(ctl)))
@@ -1051,9 +1053,11 @@ void * reader_thread(void *arg)
     atomic_store(&ev->last_fragment_packed_time, packed_now);
 
     ev->fragments[fragnum] = frag_i;
-    if (fragnum == 0)
+
+    if (fragnum == 0) //do some preprocessing on header
     {
-      ev->header_size =  (uint16_t) 4*(1+fragment_get(daq,frag_i)->buf[0]);
+      int surf_header_size = frag->buf[frag->buf[0]+1];
+      ev->header_size =  (surf_header_size + frag->buf[0] +1)*2;
       ev->nsamples = (ev->nbytes_expected -  ev->header_size) / PUEODAQ_NCHAN / 2;
     }
 
@@ -1083,7 +1087,10 @@ int pueo_daq_dump(pueo_daq_t * daq, FILE * stream, int flags)
   (void) flags;
 
   int r = 0;
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
 #define ATOMIC_PRINT(x) r+= fprintf(stream,#x ": %u\n", atomic_load(&daq->x))
+  fprintf(stream, "DAQ DUMP @ %ld.%09ld:\n", ts.tv_sec, ts.tv_nsec);
   ATOMIC_PRINT(num_events_discovered);
   ATOMIC_PRINT(num_events_received);
   ATOMIC_PRINT(num_events_dispensed);
@@ -1091,7 +1098,14 @@ int pueo_daq_dump(pueo_daq_t * daq, FILE * stream, int flags)
   pueo_daq_stats_t st;
   pueo_daq_get_stats(daq, &st);
 
-  printf("{\n" PUEODAQ_STATS_JSON_FORMAT"}\n", PUEODAQ_STATS_VALS(st));
+  fprintf(stream, "turf_stats{\n" PUEODAQ_STATS_JSON_FORMAT"}\n", PUEODAQ_STATS_VALS(st));
+
+  uint32_t event_count, occupancy, in_reset, running;
+  read_reg(daq, &turf_trig.event_count, &event_count);
+  read_reg(daq, &turf_trig.occupancy, &occupancy);
+  read_reg(daq, &turf_event.event_in_reset, &in_reset);
+  read_reg(daq, &turf_trig.running, &running);
+  fprintf(stream, "turg_trig{ occupancy: %u, event_count: %u, running: %u}\nturf_event{ in_reset: %u, running: %u }\n" , occupancy, event_count, in_reset, running);
 
 
   return r;
