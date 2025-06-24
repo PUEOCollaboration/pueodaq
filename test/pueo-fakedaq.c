@@ -19,6 +19,7 @@ int debug = 1;
 uint8_t nthreads = 1;
 int max_in_flight =32;
 const char * outdir = "/tmp";
+int fraglen = 1024;
 
 int ready(pueo_daq_t * daq, uint32_t idx)
 {
@@ -54,6 +55,11 @@ int main (int nargs, char ** args)
       {
         turfio_mask = strtol(args[++i], NULL, 0);
       }
+      else if (!strcmp(args[i],"-L") && !last)
+      {
+        fraglen = strtol(args[++i], NULL, 0);
+        if (fraglen < 1024) fraglen = 1024;
+      }
       else if (!strcmp(args[i],"-t") && !last)
       {
         int maybe_nthreads = atoi(args[++i]);
@@ -78,7 +84,7 @@ int main (int nargs, char ** args)
   }
 
   printf("Using interval %f, turfio_mask 0x%hhx\n", interval, turfio_mask);
-  pueo_daq_config_t cfg = { PUEO_DAQ_CONFIG_DFLT, .fragment_size = 1024, .debug = debug, .n_recvthreads =nthreads, .max_in_flight = max_in_flight, .turfio_mask = turfio_mask };
+  pueo_daq_config_t cfg = { PUEO_DAQ_CONFIG_DFLT, .fragment_size = fraglen, .debug = debug, .n_recvthreads =nthreads, .max_in_flight = max_in_flight, .turfio_mask = turfio_mask };
 
   signal(SIGINT, handler);
 

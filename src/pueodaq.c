@@ -256,7 +256,7 @@ struct blocking_wait_check
 #define READ_WAIT_CHECK(addr,tag) ( (struct blocking_wait_check) {.wanted = (addr & 0x0fffffff) | (tag << 28), .wanted_mask = 0xffffffff } )
 #define WRITE_WAIT_CHECK(addr,tag)( (struct blocking_wait_check) {.wanted = (addr & 0x0fffffff) | (tag << 28), .wanted_mask = 0xffffffff } )
 #define ACK_WAIT_CHECK(addr,tag,allow) ( (struct blocking_wait_check) { .wanted = (  (((uint64_t) allow) << 63) | (1ull << 62) | ( ((uint64_t) addr) <<20) | (((uint64_t)tag) << 32)), .wanted_mask = 0xc00000fffff00000} )
-#define CTL_WAIT_CHECK(ctl) ( ( struct blocking_wait_check)  {.wanted = ctl.RAW, .wanted_mask = 0xffffffffffff0000 } )
+#define CTL_WAIT_CHECK(ctl) ( ( struct blocking_wait_check)  {.wanted = ctl.RAW, .wanted_mask = 0xffffffffffff} )
 #define PERMISSIVE_WAIT_CHECK() ( (struct blocking_wait_check)  { .wanted_mask = 0 } )
 
 
@@ -855,29 +855,29 @@ int pueo_daq_reset(pueo_daq_t * daq)
 
   // get max fragments
 
-  turf_ctl_t ctl = { .BIT.COMMAND = TURF_PR_COMMAND };
+  turf_ctl_t ctl_rd = { .BIT.COMMAND = TURF_PR_COMMAND };
+  turf_ctl_t ctl_wr = { .BIT.COMMAND = TURF_PW_COMMAND };
 
-  if (acked_send(daq,daq->net.daq_ctl_sck, TURF_PORT_CTL_REQ, ctl, &ctl, &PERMISSIVE_WAIT_CHECK()))
+  if (acked_send(daq,daq->net.daq_ctl_sck, TURF_PORT_CTL_REQ, ctl_rd, &ctl_rd, &PERMISSIVE_WAIT_CHECK()))
   {
       fprintf(stderr,"Problem calling PR\n");
       return 1;
   }
-  turf_ctl_param_t pr = {.RAW = ctl.BIT.PAYLOAD};
-  printf("%hu %hu %hu\n", pr.BIT.FRAGSRCMASK, pr.BIT.ADDR, pr.BIT.FRAGMENT);
+  if (daq->cfg.debug > 1) 
+    printf("0x%lx [mask: 0x%lx addr: %lu  fraglen: %lu]\n",  ctl_rd.RAW,  ctl_rd.RAW & 0xffff, 1+((ctl_rd.RAW >> 16) & 0xffff), (8 +(( ctl_rd.RAW >> 32) &0xffff)) & 0xff80);
 
-  /*
-  turf_ctl_param_t p = {.BIT.FRAGSRCMASK = 0x3f, .BIT.ADDR = 4095, .BIT.FRAGMENT = daq->cfg.fragment_size-8};
-  ctl.BIT.PAYLOAD =  p.RAW;
-  ctl.BIT.COMMAND = TURF_PW_COMMAND;
-
-  if (acked_send(daq, daq->net.daq_ctl_sck, TURF_PORT_CTL_REQ, ctl, NULL, &CTL_WAIT_CHECK(ctl)))
+  uint64_t wr_payload = (daq->cfg.fragment_size-1) & 0xfff8; //drop lowest 3 bits?
+  wr_payload <<=32;
+  wr_payload |= 0x3f;
+  ctl_wr.BIT.PAYLOAD =wr_payload;
+  turf_ctl_t ctl_check = {.RAW = wr_payload | 0xfff0000};
+  if (acked_send(daq, daq->net.daq_ctl_sck, TURF_PORT_CTL_REQ, ctl_wr, &ctl_wr, &CTL_WAIT_CHECK(ctl_check)))
   {
       fprintf(stderr,"Problem calling PW\n");
       return 1;
   }
 
-  */
-
+  if (daq->cfg.debug > 1) printf("0x%lx [mask: 0x%lx  addr: %lu  fraglen: %lu]\n", ctl_wr.RAW,  ctl_wr.RAW & 0xffff, 1+((ctl_wr.RAW >> 16) & 0xffff), ( 8+ (( ctl_wr.RAW >> 32) &0xffff)) & 0xff80);
 
 
   return 0;
