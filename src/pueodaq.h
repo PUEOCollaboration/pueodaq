@@ -38,7 +38,7 @@
 
 #define PUEODAQ_NCHAN 224
 #define PUEODAQ_NSAMP 1024
-#define PUEODAQ_HEADER_SIZE 1024
+#define PUEODAQ_MAX_HEADER_SIZE 1024
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -77,7 +77,7 @@ typedef struct pueo_daq_config
 
   struct timespec timeout;
   size_t max_attempts;
-  bool debug;
+  int debug;
   uint32_t turfio_mask : 4;
 
 
@@ -92,12 +92,12 @@ typedef struct pueo_daq_event_data
   {
    struct
    {
-     uint16_t hdr_size;
+     uint16_t hdr_size_min_div4_m1;
      uint16_t hdr_version;
    } tag;
    struct
    {
-     uint8_t v[PUEODAQ_HEADER_SIZE];
+     uint8_t v[PUEODAQ_MAX_HEADER_SIZE];
    } bytes;
   } header;
   int16_t waveform_data[PUEODAQ_NCHAN][PUEODAQ_NSAMP]; //TODO parameterize this, make it flexible maybe. This used to be flexible but right now the firmware isn't flexible so...

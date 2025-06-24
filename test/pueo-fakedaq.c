@@ -15,7 +15,7 @@ void handler(int signum)
 
 double interval = 1;
 uint8_t turfio_mask = 0;
-bool debug = false;
+int debug = 1;
 uint8_t nthreads = 1;
 int max_in_flight =32;
 const char * outdir = "/tmp";
@@ -24,16 +24,16 @@ int ready(pueo_daq_t * daq, uint32_t idx)
 {
   printf("Event %u ready\n", idx);
 
-  pueo_daq_event_data_t  * d = calloc(1,sizeof(*d));
+  pueo_daq_event_data_t  * d = calloc(1,sizeof(pueo_daq_event_data_t));
 
   pueo_daq_get_event(daq, d);
   char fname[512];
   sprintf(fname,"%s/fakedaq_%05d.dat", outdir, idx);
   FILE * f  = fopen(fname,"w");
-  fwrite(&d, sizeof(*d), 1, f);
+  int nb =fwrite(d, sizeof(pueo_daq_event_data_t), 1, f);
   fclose(f);
   free(d);
-  printf("Written to %s\n", fname);
+  printf("%d bytes written to %s\n", nb*sizeof(pueo_daq_event_data_t), fname);
 }
 
 int main (int nargs, char ** args)
@@ -69,9 +69,9 @@ int main (int nargs, char ** args)
       {
         outdir = args[++i];
       }
-      else if (!strcmp(args[i],"-d"))
+      else if (!strcmp(args[i],"-d") && !last)
       {
-        debug = true;
+        debug = atoi(args[++i]);
       }
     }
 

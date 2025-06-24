@@ -348,7 +348,7 @@ static int acked_multisend(pueo_daq_t * daq, int sock, uint16_t port, size_t Nse
     acked_msg_ptr_t snd, acked_msg_ptr_t rcv, struct blocking_wait_check * check)
 {
 
-  if (daq->cfg.debug)
+  if (daq->cfg.debug > 2)
   {
     printf("Sending %zu packets to turf:%hu\n > ", Nsend, port);
     for (unsigned i = 0; i < (Nsend > 4 ? 4 : Nsend) ; i++)
@@ -371,7 +371,7 @@ static int acked_multisend(pueo_daq_t * daq, int sock, uint16_t port, size_t Nse
     if (!check) break;
     if (!blocking_wait_for_response(daq, sock, &a, check))
     {
-      if (daq->cfg.debug) 
+      if (daq->cfg.debug > 2)
       {
         printf( "<   0x%016lx\n", check->val);
       }
@@ -415,13 +415,13 @@ static void allow_ack(pueo_daq_t * daq, uint16_t addr)
 {
 
   int w = addr / 64;
-  int b = addr & 64;
+  int b = addr % 64;
   uint64_t m = 1ull << b;
 
-  uint64_t was = atomic_fetch_and(&daq->ack_map[w], ~m);
+  uint64_t was = atomic_fetch_or(&daq->ack_map[w], m);
 
   // check to make sure we're not double acking.
-  assert (!(was  & ~m));
+  assert (!(was  & m));
 }
 
 
@@ -738,14 +738,17 @@ int pueo_daq_start(pueo_daq_t * daq)
     fprintf(stderr,"Couldn't write turfio mask\n");
   }
 
-  if (write_reg(daq, &turf_trig.latency, 200))
+  if (daq->cfg.turfio_mask != 0xf)
   {
-    fprintf(stderr,"Couldn't write trig latency\n");
-  }
+    if (write_reg(daq, &turf_trig.latency, 200))
+    {
+      fprintf(stderr,"Couldn't write trig latency\n");
+    }
 
-  if (write_reg(daq, &turf_trig.offset, 0))
-  {
-    fprintf(stderr,"Couldn't write trig offset\n");
+    if (write_reg(daq, &turf_trig.offset, 0))
+    {
+      fprintf(stderr,"Couldn't write trig offset\n");
+    }
   }
 
 
@@ -1024,7 +1027,7 @@ void * reader_thread(void *arg)
     if (atomic_compare_exchange_strong(&ev->nfragments_expected,&zero, (evlen + daq->cfg.fragment_size -1) / daq->cfg.fragment_size))
     {
 
-      printf("thd %d recvd %ld bytes from unencountered address (frag %d, addr %hu, evbuf: 0x%p)\n", s->tnum, nrecv, frag_i, addr, ev);
+      if (daq->cfg.debug > 0) printf("thd %d recvd %ld bytes from unencountered address (frag %d, addr %hu, evbuf: 0x%p)\n", s->tnum, nrecv, frag_i, addr, ev);
       clock_gettime(CLOCK_MONOTONIC,&now);
       uint64_t packed_now = pack_time(now);
 
@@ -1050,19 +1053,20 @@ void * reader_thread(void *arg)
     ev->fragments[fragnum] = frag_i;
     if (fragnum == 0)
     {
-      ev->header_size =  (uint16_t) daq->fragments[frag_i].buf[0];
+      ev->header_size =  (uint16_t) 4*(1+fragment_get(daq,frag_i)->buf[0]);
+      ev->nsamples = (ev->nbytes_expected -  ev->header_size) / PUEODAQ_NCHAN / 2;
     }
 
     //add fragments received
     uint16_t prior = atomic_fetch_add(&ev->nfragments_rcvd, 1);
-    printf("[fragnum=%hu][addr=%hu](nrecv=%hu/%hu) @ %lld.%09lld\n",fragnum, addr, prior, ev->nfragments_expected, now.tv_sec, now.tv_nsec);
+    if (daq->cfg.debug > 1) printf("[fragnum=%hu][addr=%hu](nrecv=%hu/%hu) @ %ld.%09ld\n",fragnum, addr, 1+prior, ev->nfragments_expected, now.tv_sec, now.tv_nsec);
 
     // we finished.I think this is ok since we can't get more than nfagments_expected fragments, right?
     if (prior == ev->nfragments_expected -1)
     {
       uint32_t rcv_idx = atomic_fetch_add(&daq->num_events_received, 1);
 
-      printf("thd %d recvd last %ld bytes from address (frag %d, addr %hu, evbuf: 0x%p)\n", s->tnum, nrecv, frag_i, addr, ev);
+      if (daq->cfg.debug > 0) printf("thd %d recvd last %ld bytes from address (frag %d, addr %hu, evbuf: 0x%p)\n", s->tnum, nrecv, frag_i, addr, ev);
 
       // schedule an ack if we have room for another event
       allow_ack(daq, ev->address);
@@ -1114,19 +1118,17 @@ int pueo_daq_get_event(pueo_daq_t * daq, pueo_daq_event_data_t * dest)
   uint32_t started = atomic_fetch_add(&daq->num_events_dispense_began,1);
   struct event_buf * ev = event_buf_get(daq, started % daq->cfg.n_event_bufs);
 
-  printf("Header size: %hu\n", ev->header_size);
+  if (daq->cfg.debug) printf("Header size: %hu\n", ev->header_size);
 
   //header will always fit in first fragment
   memcpy(&dest->header, fragment_get(daq, ev->fragments[0])->buf, ev->header_size);
 
-
-  uint32_t last_fragment_size = ev->nbytes_expected % (daq->cfg.fragment_size + sizeof(turf_fraghdr_t));
-
+  uint32_t last_fragment_size = ev->nbytes_expected % (daq->cfg.fragment_size);
 
   //only support this for now, could handle truncated easily, adjustable with a bit more difficulty.
   assert (ev->nsamples == PUEODAQ_NSAMP);
 
-  void * p = dest->waveform_data;
+  void * p = &dest->waveform_data[0][0];
   p = mempcpy(p, fragment_get(daq,ev->fragments[0])->buf + ev->header_size, daq->cfg.fragment_size-ev->header_size);
   for (int i = 1; i < ev->nfragments_expected; i++)
   {
@@ -1194,9 +1196,8 @@ void* control_thread(void * arg)
     // we have room for more events if the number allowed minus the number
     // dispensed is less than to the number of event bufs we  have
     uint32_t capacity = daq->num_events_allowed - dispensed;
-    uint32_t rcvd = atomic_load(&daq->num_events_received);
 
-    if (capacity && rcvd > dispensed)
+    if (capacity && (dispensed > daq->num_acks_sent))
     {
       num_acks = 0;
       for (unsigned w = 0; w < sizeof(daq->ack_map) / sizeof(*daq->ack_map); w++)
@@ -1235,11 +1236,12 @@ void* control_thread(void * arg)
         //these count basically the same thing
         tag++;
 
-        //increment the addresses
+        //increment the addresses, clear the ack bis
         for (unsigned i = 0; i < num_acks; i++)
         {
           uint16_t addr = acks[num_acks-1].BIT.ADDR;
           daq->addr_map[addr] = daq->num_addr_assigned++;
+          atomic_fetch_and(&daq->ack_map[addr/64], ~(1ull << (addr % 64)));
         }
       }
 
