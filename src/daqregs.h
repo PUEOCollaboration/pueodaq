@@ -93,7 +93,8 @@ DEF(ext_trig_select,      BF (BASE,0x10c,1,1))   \
 DEF(ext_offset,           BF (BASE,0x10c,16,16))   \
 DEF(softrig,              REG(BASE, 0x110)) \
 DEF(running,              BF (BASE, 0x110, 16,1)) \
-DEF(occupancy,         REG_RO(BASE, 0x114)) \
+DEF(occupancy,           REG_RO(BASE, 0x114)) \
+DEF(holdoff_reg,          REG(BASE, 0x118)) \
 DEF(holdoff,              BF (BASE, 0x118, 0, 16)) \
 DEF(surf_err,             BF (BASE, 0x118, 16, 1)) \
 DEF(turf_err,             BF (BASE, 0x118, 17, 1)) \

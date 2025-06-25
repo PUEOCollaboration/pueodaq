@@ -1101,11 +1101,23 @@ int pueo_daq_dump(pueo_daq_t * daq, FILE * stream, int flags)
   fprintf(stream, "turf_stats{\n" PUEODAQ_STATS_JSON_FORMAT"}\n", PUEODAQ_STATS_VALS(st));
 
   uint32_t event_count, occupancy, in_reset, running;
+  union
+  {
+    struct
+    {
+      uint32_t holdoff : 16;
+      uint32_t surf_err : 1;
+      uint32_t turf_err : 1;
+    } as_holdoff;
+    uint32_t as_uint;
+  } holdoff_reg;
   read_reg(daq, &turf_trig.event_count, &event_count);
   read_reg(daq, &turf_trig.occupancy, &occupancy);
   read_reg(daq, &turf_event.event_in_reset, &in_reset);
   read_reg(daq, &turf_trig.running, &running);
-  fprintf(stream, "turg_trig{ occupancy: %u, event_count: %u, running: %u}\nturf_event{ in_reset: %u }\n" , occupancy, event_count, running, in_reset);
+  read_reg(daq, &turf_trig.holdoff_reg, &holdoff_reg.as_uint);
+  fprintf(stream, "turg_trig { occupancy: %u, event_count: %u, running: %u, holdoff : %u, turferr: %u, surferr: %u}\n", occupancy, event_count, running, holdoff_reg.as_holdoff.holdoff, holdoff_reg.as_holdoff.turf_err, holdoff_reg.as_holdoff.surf_err);
+  fprintf(stream, "turf_event { in_reset: %u }\n" , in_reset);
 
 
   return r;
