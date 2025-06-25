@@ -102,6 +102,18 @@ DEF(event_count,       REG_RO(BASE, 0x11c))
 
 REG_GROUP(turf_trig, 0x1c000, TRIG_REGS);
 
+//TODO 
+typedef union
+{
+    struct
+    {
+      uint32_t holdoff : 16;
+      uint32_t surf_err : 1;
+      uint32_t turf_err : 1;
+    } as_holdoff;
+    uint32_t as_uint;
+} holdoff_reg_t;
+
 
 #define TIME_REGS(DEF,BASE)            \
 DEF(en_int_pps,     BF    (BASE,0,0,1))    \
