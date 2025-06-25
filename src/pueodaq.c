@@ -396,7 +396,7 @@ static inline struct event_buf * event_buf_get(pueo_daq_t * daq, int i)
 
 static inline struct fragment * fragment_get(pueo_daq_t * daq, uint32_t i)
 {
-  return (struct fragment *)  (((uint8_t*) daq->fragments) + i * (sizeof(struct fragment) + daq->cfg.fragment_size));
+  return (struct fragment*)  (((uint8_t*) daq->fragments) + i * (sizeof(struct fragment) + daq->cfg.fragment_size));
 }
 
 
@@ -1229,7 +1229,7 @@ void* control_thread(void * arg)
           for ( int bit = 0; bit < 64; bit++)
           {
             if (num_acks >= TURF_MAX_ACKS || num_acks >= capacity) break;
-            if (word & (1 << bit))
+            if (word & (1ull << bit))
             {
               uint16_t addr = w*64 +bit;
               acks[num_acks].BIT.ADDR = addr;
