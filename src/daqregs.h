@@ -73,10 +73,23 @@ DEF(ndwords2,       REG_RO(BASE, 0x018))\
 DEF(ndwords3,       REG_RO(BASE, 0x01C))\
 DEF(outqwords,      REG_RO(BASE, 0x020))\
 DEF(outevents,      REG_RO(BASE, 0x024))\
-
+DEF(count_reg,       REG_RO(BASE, 0x028))\
+DEF(ack_count,       BF(BASE, 0x028, 0, 12))\
+DEF(allow_count,     BF(BASE, 0x028, 16, 9))
 
 
 REG_GROUP(turf_event, 0x18000, EVENT_REGS);
+
+typedef union
+{
+    struct
+    {
+      uint16_t ack_count : 12; //use uint16_t so it's alligned on the 16 bits
+      uint16_t allow_count : 9;
+    } as_count;
+    uint32_t as_uint;
+} event_count_reg_t;
+
 
 
 #define TRIG_REGS(DEF,BASE)\
@@ -93,16 +106,16 @@ DEF(ext_trig_select,      BF (BASE,0x10c,1,1))   \
 DEF(ext_offset,           BF (BASE,0x10c,16,16))   \
 DEF(softrig,              REG(BASE, 0x110)) \
 DEF(running,              BF (BASE, 0x110, 16,1)) \
-DEF(occupancy,           REG_RO(BASE, 0x114)) \
+DEF(occupancy,         REG_RO(BASE, 0x114)) \
 DEF(holdoff_reg,          REG(BASE, 0x118)) \
 DEF(holdoff,              BF (BASE, 0x118, 0, 16)) \
 DEF(surf_err,             BF (BASE, 0x118, 16, 1)) \
 DEF(turf_err,             BF (BASE, 0x118, 17, 1)) \
-DEF(event_count,       REG_RO(BASE, 0x11c))
+DEF(trigger_count,     REG_RO(BASE, 0x11c))
 
 REG_GROUP(turf_trig, 0x1c000, TRIG_REGS);
 
-//TODO 
+//TODO  this should be automatically generated probably
 typedef union
 {
     struct
@@ -121,7 +134,11 @@ DEF(use_int_pps,    BF    (BASE,0,1,1))    \
 DEF(pps_holdoff,    BF    (BASE,0,16,16))  \
 DEF(current_second, REG   (BASE,0x08))    \
 DEF(last_pps,       REG_RO(BASE,0x0c))    \
-DEF(llast_pps,      REG_RO(BASE,0x010))
+DEF(llast_pps,      REG_RO(BASE,0x010))\
+DEF(last_dead,      REG_RO(BASE,0x014)) \
+DEF(llast_dead,     REG_RO(BASE,0x018)) \
+DEF(panic_counter,  REG_RO(BASE,0x01c))
+
 
 REG_GROUP(turf_time, 0x1a000, TIME_REGS);
 

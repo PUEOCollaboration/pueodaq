@@ -230,6 +230,21 @@ typedef struct pueo_daq_stats
   uint32_t turfio_words_recv[4];
   uint32_t qwords_sent;
   uint32_t events_sent;
+  uint32_t trigger_count;
+  uint32_t current_second;
+  uint32_t last_pps;
+  uint32_t llast_pps;
+  uint32_t last_dead;
+  uint32_t llast_dead;
+  uint32_t panic_count;
+  uint32_t occupancy;
+  uint16_t ack_count;
+  uint16_t allow_count;
+  uint16_t holdoff;
+  bool running;
+  bool in_reset;
+  bool surf_err;
+  bool turf_err;
 } pueo_daq_stats_t;
 
 #define PUEODAQ_STATS_JSON_FORMAT_WITH_PREFIX(prefix)  prefix "\"turfio0_recv_bytes\": %u,\n"\
@@ -237,11 +252,22 @@ typedef struct pueo_daq_stats
                                                        prefix "\"turfio2_recv_bytes\": %u,\n"\
                                                        prefix "\"turfio3_recv_bytes\": %u,\n"\
                                                        prefix "\"bytes_sent\": %u,\n"\
-                                                       prefix "\"events_sent\": %u,\n"
+                                                       prefix "\"events_sent\": %u,\n"\
+                                                       prefix "\"trig_count\": %u,\n"\
+                                                       prefix "\"current_sec\": %u,\n"\
+                                                       prefix "\"pps, last_pps\": %u,%u\n"\
+                                                       prefix "\"dead, last_dead\": %u,%u\n"\
+						       prefix "\"panic_count: \" %u\n"\
+						       prefix "\"occupancy: \" %u\n"\
+						       prefix "\"holdoff: \" %u\n"\
+                                                       prefix "\"running, in_reset\": %s,%s\n"\
+                                                       prefix "\"turf_err, surf_err\": %s,%s\n"
 
 #define PUEODAQ_STATS_JSON_FORMAT PUEODAQ_STATS_JSON_FORMAT_WITH_PREFIX("  ")
 
-#define PUEODAQ_STATS_VALS(s)  4*s.turfio_words_recv[0], 4*s.turfio_words_recv[1], 4*s.turfio_words_recv[2], 4*s.turfio_words_recv[3], 8*s.qwords_sent, s.events_sent
+#define PUEODAQ_STATS_VALS(s)  4*s.turfio_words_recv[0], 4*s.turfio_words_recv[1], 4*s.turfio_words_recv[2], 4*s.turfio_words_recv[3],\
+       	8*s.qwords_sent, s.events_sent, s.trigger_count, s.current_second, s.last_pps, s.llast_pps, s.last_dead, s.llast_dead, \
+	s.panic_count, s.occupancy, s.holdoff, s.running ? "yes" : "no" , s.in_reset ? "yes" : "no", s.turf_err ? "yes" : "no", s.surf_err ? "yes" : "no"
 
 
 int pueo_daq_get_stats(pueo_daq_t * daq,  pueo_daq_stats_t * stats);

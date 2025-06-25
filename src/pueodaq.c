@@ -1099,18 +1099,6 @@ int pueo_daq_dump(pueo_daq_t * daq, FILE * stream, int flags)
 
   fprintf(stream, "turf_stats{\n" PUEODAQ_STATS_JSON_FORMAT"}\n", PUEODAQ_STATS_VALS(st));
 
-  uint32_t event_count, occupancy, in_reset, running;
-
-  holdoff_reg_t holdoff_reg;
-
-  read_reg(daq, &turf_trig.event_count, &event_count);
-  read_reg(daq, &turf_trig.occupancy, &occupancy);
-  read_reg(daq, &turf_event.event_in_reset, &in_reset);
-  read_reg(daq, &turf_trig.running, &running);
-  read_reg(daq, &turf_trig.holdoff_reg, &holdoff_reg.as_uint);
-  fprintf(stream, "turg_trig { occupancy: %u, event_count: %u, running: %u, holdoff : %u, turferr: %u, surferr: %u}\n", occupancy, event_count, running, holdoff_reg.as_holdoff.holdoff, holdoff_reg.as_holdoff.turf_err, holdoff_reg.as_holdoff.surf_err);
-  fprintf(stream, "turf_event { in_reset: %u }\n" , in_reset);
-
 
   return r;
 }
@@ -1288,16 +1276,42 @@ int pueo_daq_soft_trig(pueo_daq_t * daq)
 
 int pueo_daq_get_stats(pueo_daq_t * daq, pueo_daq_stats_t * st)
 {
+  uint32_t in_reset;
+  uint32_t running;
+  event_count_reg_t counts;
+  holdoff_reg_t holdoff;
   if (
       read_reg(daq, &turf_event.ndwords0, &st->turfio_words_recv[0]) ||
       read_reg(daq, &turf_event.ndwords1, &st->turfio_words_recv[1]) ||
       read_reg(daq, &turf_event.ndwords2, &st->turfio_words_recv[2]) ||
       read_reg(daq, &turf_event.ndwords3, &st->turfio_words_recv[3]) ||
       read_reg(daq, &turf_event.outqwords, &st->qwords_sent) ||
-      read_reg(daq, &turf_event.outevents, &st->events_sent))
+      read_reg(daq, &turf_event.outevents, &st->events_sent) ||
+      read_reg(daq, &turf_trig.trigger_count, &st->trigger_count)||
+      read_reg(daq, &turf_trig.occupancy, &st->occupancy)||
+      read_reg(daq, &turf_time.current_second, &st->current_second)||
+      read_reg(daq, &turf_time.last_pps, &st->last_pps)||
+      read_reg(daq, &turf_time.llast_pps, &st->llast_pps)||
+      read_reg(daq, &turf_time.last_dead, &st->last_dead)||
+      read_reg(daq, &turf_time.llast_dead, &st->llast_dead)||
+      read_reg(daq, &turf_time.panic_counter, &st->panic_count)||
+      read_reg(daq, &turf_event.count_reg, &counts.as_uint)||
+      read_reg(daq, &turf_trig.holdoff_reg, &holdoff.as_uint)||
+      read_reg(daq, &turf_trig.running, &running)||
+      read_reg(daq, &turf_event.event_in_reset, &in_reset)
+     )
   {
     return 1;
   }
+
+  st->ack_count = counts.as_count.ack_count;
+  st->allow_count = counts.as_count.allow_count;
+  st->running = running;
+  st->holdoff =  holdoff.as_holdoff.holdoff;
+  st->turf_err = holdoff.as_holdoff.turf_err;
+  st->surf_err = holdoff.as_holdoff.surf_err;
+  st->in_reset = in_reset;
+
   return 0;
 }
 
