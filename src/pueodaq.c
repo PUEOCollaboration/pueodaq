@@ -172,7 +172,7 @@ struct pueo_daq
 
 
   // the event buffer
-  uint16_t evbuf_sz;
+  uint32_t evbuf_sz;
   struct event_buf * event_bufs;
 
   // the fragment used map. bit is 1 if a fragment has been claimed
@@ -391,12 +391,12 @@ static int acked_send(pueo_daq_t * daq, int sock, uint16_t port,  acked_msg_t sn
 
 static inline struct event_buf * event_buf_get(pueo_daq_t * daq, int i)
 {
-  return (struct event_buf*)  (daq->event_bufs + i * daq->evbuf_sz);
+  return (struct event_buf*)  ( ((uint8_t*) daq->event_bufs) + i * daq->evbuf_sz);
 }
 
 static inline struct fragment * fragment_get(pueo_daq_t * daq, uint32_t i)
 {
-  return daq->fragments + i * (sizeof(turf_fraghdr_t) + daq->cfg.fragment_size);
+  return (struct fragment *)  (((uint8_t*) daq->fragments) + i * (sizeof(struct fragment) + daq->cfg.fragment_size));
 }
 
 
@@ -539,7 +539,7 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg)
 
   errno = 0;
   daq->fragments = mmap(NULL,
-      daq->nfragments * (sizeof(turf_fraghdr_t) + daq->cfg.fragment_size),
+      daq->nfragments * (sizeof(struct fragment) + daq->cfg.fragment_size),
       PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1,0);
 
   daq->fragments_bitmap = calloc(daq->fragments_bitmap_size, sizeof(*daq->fragments_bitmap));
@@ -868,7 +868,7 @@ int pueo_daq_reset(pueo_daq_t * daq)
 
   uint64_t wr_payload = (daq->cfg.fragment_size-1) & 0xfff8; //drop lowest 3 bits?
   wr_payload <<=32;
-  wr_payload |= 0x3f;
+  wr_payload |= daq->cfg.frag_src_mask;
   ctl_wr.BIT.PAYLOAD =wr_payload;
   turf_ctl_t ctl_check = {.RAW = wr_payload | 0xfff0000};
   if (acked_send(daq, daq->net.daq_ctl_sck, TURF_PORT_CTL_REQ, ctl_wr, &ctl_wr, &CTL_WAIT_CHECK(ctl_check)))
@@ -930,7 +930,7 @@ void pueo_daq_destroy(pueo_daq_t * daq)
 
   if (daq->fragments)
   {
-    munmap(daq->fragments, daq->nfragments * (sizeof(turf_fraghdr_t) + daq->cfg.fragment_size));
+    munmap(daq->fragments, daq->nfragments * (sizeof(struct fragment) + daq->cfg.fragment_size));
   }
 
   if (daq->fragments_bitmap) free(daq->fragments_bitmap);
@@ -1003,10 +1003,10 @@ void * reader_thread(void *arg)
     //get the index of a free fragment
     uint16_t frag_i = fragment_find_free(daq, s->tnum);
     struct fragment * frag = fragment_get(daq, frag_i);
-//    printf("Thd  %d trying to receive fragment %d (0x%p)\n", s->tnum, frag_i, frag);
+    if (daq->cfg.debug > 2 )printf("Thd  %d trying to receive fragment %d (0x%p)\n", s->tnum, frag_i, frag);
 
     errno = 0;
-    ssize_t nrecv = recvfrom(sck_frg, frag, daq->cfg.fragment_size + sizeof(turf_fraghdr_t),0, (struct sockaddr*) &src, &src_len);
+    ssize_t nrecv = recvfrom(sck_frg, frag, daq->cfg.fragment_size + sizeof(struct fragment),0, (struct sockaddr*) &src, &src_len);
 
     if (nrecv  < 0)
     {
@@ -1029,7 +1029,6 @@ void * reader_thread(void *arg)
     if (atomic_compare_exchange_strong(&ev->nfragments_expected,&zero, (evlen + daq->cfg.fragment_size -1) / daq->cfg.fragment_size))
     {
 
-      if (daq->cfg.debug > 0) printf("thd %d recvd %ld bytes from unencountered address (frag %d, addr %hu, evbuf: 0x%p)\n", s->tnum, nrecv, frag_i, addr, ev);
       clock_gettime(CLOCK_MONOTONIC,&now);
       uint64_t packed_now = pack_time(now);
 
@@ -1040,6 +1039,7 @@ void * reader_thread(void *arg)
       //TODO: should we use SO_TIMESTAMP[NS]?
       ev->address = addr;
       atomic_store(&ev->first_fragment_packed_time, packed_now);
+      if (daq->cfg.debug > 0) printf("thd %d recvd %ld bytes from unencountered address (frag %d, addr %hu, evbuf: 0x%p)\n", s->tnum, nrecv, frag_i, addr, ev);
     }
     else
     {
@@ -1105,7 +1105,7 @@ int pueo_daq_dump(pueo_daq_t * daq, FILE * stream, int flags)
   read_reg(daq, &turf_trig.occupancy, &occupancy);
   read_reg(daq, &turf_event.event_in_reset, &in_reset);
   read_reg(daq, &turf_trig.running, &running);
-  fprintf(stream, "turg_trig{ occupancy: %u, event_count: %u, running: %u}\nturf_event{ in_reset: %u, running: %u }\n" , occupancy, event_count, in_reset, running);
+  fprintf(stream, "turg_trig{ occupancy: %u, event_count: %u, running: %u}\nturf_event{ in_reset: %u }\n" , occupancy, event_count, running, in_reset);
 
 
   return r;
@@ -1204,12 +1204,17 @@ void* control_thread(void * arg)
     // Do we have room to ack?
     // Note that we are the only thread (other than the main thread) that touches num_events_allowed
     uint32_t dispensed = atomic_load(&daq->num_events_dispensed);
+    uint32_t discovered = atomic_load(&daq->num_events_discovered);
 
     assert(dispensed <= daq->num_events_allowed);
 
     // we have room for more events if the number allowed minus the number
-    // dispensed is less than to the number of event bufs we  have
-    uint32_t capacity = daq->num_events_allowed - dispensed;
+    // dispensed is less than to the number of event bufs we  have available
+    uint32_t event_bufs_used = discovered - dispensed;
+    int event_bufs_available = daq->cfg.n_event_bufs - event_bufs_used - daq->num_events_allowed;
+
+    assert (event_bufs_available >=0);
+    uint32_t capacity = event_bufs_available < 0 ? 0: event_bufs_available;
 
     if (capacity && (dispensed > daq->num_acks_sent))
     {
@@ -1254,6 +1259,7 @@ void* control_thread(void * arg)
         for (unsigned i = 0; i < num_acks; i++)
         {
           uint16_t addr = acks[num_acks-1].BIT.ADDR;
+          printf("Sent ack for %hu\n", addr);
           daq->addr_map[addr] = daq->num_addr_assigned++;
           atomic_fetch_and(&daq->ack_map[addr/64], ~(1ull << (addr % 64)));
         }

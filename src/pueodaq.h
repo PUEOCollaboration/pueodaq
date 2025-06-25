@@ -68,6 +68,8 @@ typedef struct pueo_daq_config
 
   const char * eth_device; /// Ethernet device, NULL to try to infer via route from TURF IP Address
 
+  uint8_t frag_src_mask;
+
   struct
   {
     uint16_t control_in;
@@ -136,6 +138,7 @@ typedef int (*pueo_daq_event_ready_callback_t)(pueo_daq_t * daq, uint32_t idx);
   .n_recvthreads = 4,                       \
   .turf_ip_addr = "10.68.65.81",            \
   .turf_subnet_len = 24,                    \
+  .frag_src_mask = 0x3f,                    \
   .eth_device = NULL,                       \
   .daq_ports = {                            \
     .control_in = 0x5263,                   \
