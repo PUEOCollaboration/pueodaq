@@ -24,11 +24,10 @@ int frag_src_mask = 0x3f;
 
 int ready(pueo_daq_t * daq, uint32_t idx)
 {
-  printf("Event %u ready\n", idx);
 
   pueo_daq_event_data_t  * d = calloc(1,sizeof(pueo_daq_event_data_t));
-
   pueo_daq_get_event(daq, d);
+  printf("   Got event number is %u/%u\n", d->header.vals.event_number, idx);
   char fname[512];
   sprintf(fname,"%s/fakedaq_%05d.dat", outdir, idx);
   FILE * f  = fopen(fname,"w");
