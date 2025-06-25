@@ -148,8 +148,9 @@ struct pueo_daq
 
     pthread_mutex_t tx_lock;
 
-    uint8_t wr_tag : 4;
-    uint8_t rd_tag : 4;
+    _Atomic uint32_t wr_tag; //  &0xf) 
+
+    _Atomic uint32_t rd_tag;  // & 0xf
 
 
     // these are receiving ports on
@@ -361,7 +362,9 @@ static int acked_multisend(pueo_daq_t * daq, int sock, uint16_t port, size_t Nse
   struct sockaddr_in a = {.sin_addr = daq->net.turf_ip, .sin_port = htons(port)};
   for (unsigned attempt = 0; attempt < daq->cfg.max_attempts; attempt++)
   {
+    pthread_mutex_lock(&daq->net.tx_lock);
     ssize_t sent = sendto(sock, snd.m, Nsend * sizeof(acked_msg_t), 0, (struct sockaddr*) &a, sizeof(a));
+    pthread_mutex_unlock(&daq->net.tx_lock);
     if (sent != (ssize_t) (Nsend *sizeof(acked_msg_t)))
     {
       fprintf(stderr,"Sending problem?\n");
@@ -945,11 +948,9 @@ void pueo_daq_destroy(pueo_daq_t * daq)
 
 int pueo_daq_write(pueo_daq_t * daq, uint32_t wraddr, uint32_t data)
 {
-  pthread_mutex_lock(&daq->net.tx_lock);
-  uint8_t tag = daq->net.wr_tag++;
+  uint32_t tag =  atomic_fetch_add(&daq->net.wr_tag,1)  & 0xf;
   turf_wrreq_t msg= {.BIT={.ADDR = wraddr & 0x0fffffff, .TAG = tag, .WRDATA = data}};
   int r = acked_send(daq, daq->net.daq_ctl_sck, TURF_PORT_WRITE_REQ, msg, NULL, &WRITE_WAIT_CHECK(wraddr, tag));
-  pthread_mutex_unlock(&daq->net.tx_lock);
 
   return r;
 }
@@ -957,12 +958,10 @@ int pueo_daq_write(pueo_daq_t * daq, uint32_t wraddr, uint32_t data)
 
 int pueo_daq_read(pueo_daq_t * daq, uint32_t rdaddr, uint32_t *data)
 {
-  pthread_mutex_lock(&daq->net.tx_lock);
-  uint8_t tag = daq->net.rd_tag++;
+  uint32_t tag =  atomic_fetch_add(&daq->net.rd_tag,1)  & 0xf;
   turf_rdreq_t msg= {.BIT={.ADDR = rdaddr & 0x0fffffff, .TAG = tag}};
   turf_rdresp_t resp;
   int r = acked_send(daq, daq->net.daq_ctl_sck, TURF_PORT_READ_REQ, msg, &resp, &READ_WAIT_CHECK(rdaddr, tag));
-  pthread_mutex_unlock(&daq->net.tx_lock);
   if (data) *data = resp.BIT.RDDATA;
 
   return r;
