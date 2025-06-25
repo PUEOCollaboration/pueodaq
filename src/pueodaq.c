@@ -1223,7 +1223,7 @@ void* control_thread(void * arg)
     // we have room for more events if the number allowed minus the number
     // dispensed is less than to the number of event bufs we  have available
     uint32_t event_bufs_used = discovered - dispensed;
-    int event_bufs_available = daq->cfg.n_event_bufs - event_bufs_used - daq->num_events_allowed;
+    int event_bufs_available = daq->cfg.n_event_bufs - event_bufs_used - daq->cfg.max_in_flight;
 
     assert (event_bufs_available >=0);
     uint32_t capacity = event_bufs_available < 0 ? 0: event_bufs_available;
