@@ -543,7 +543,7 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg)
   errno = 0;
   daq->fragments = mmap(NULL,
       daq->nfragments * (sizeof(struct fragment) + daq->cfg.fragment_size),
-      PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1,0);
+      PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE | MAP_POPULATE, -1,0);
 
   daq->fragments_bitmap = calloc(daq->fragments_bitmap_size, sizeof(*daq->fragments_bitmap));
 
@@ -568,7 +568,7 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg)
 
   errno=0;
   daq->event_bufs = mmap( NULL, daq->cfg.n_event_bufs * daq->evbuf_sz,
-                          PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+                          PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE | MAP_POPULATE, -1, 0);
 
   if (daq->event_bufs ==(void*) -1)
   {
@@ -1124,21 +1124,26 @@ int pueo_daq_get_event(pueo_daq_t * daq, pueo_daq_event_data_t * dest)
   uint32_t started = atomic_fetch_add(&daq->num_events_dispense_began,1);
   struct event_buf * ev = event_buf_get(daq, started % daq->cfg.n_event_bufs);
 
-  if (daq->cfg.debug) printf("Header size: %hu\n", ev->header_size);
-
-  //header will always fit in first fragment
-  memcpy(&dest->header, fragment_get(daq, ev->fragments[0])->buf, ev->header_size);
-
-  uint32_t last_fragment_size = ev->nbytes_expected % (daq->cfg.fragment_size);
+  assert(ev->header_size);
 
   //only support this for now, could handle truncated easily, adjustable with a bit more difficulty.
   assert (ev->nsamples == PUEODAQ_NSAMP);
+  if (daq->cfg.debug) printf("Header size: %hu\n", ev->header_size);
 
-  void * p = &dest->waveform_data[0][0];
-  p = mempcpy(p, fragment_get(daq,ev->fragments[0])->buf + ev->header_size, daq->cfg.fragment_size-ev->header_size);
-  for (int i = 1; i < ev->nfragments_expected; i++)
+  if (dest)
   {
-      p = mempcpy( p, fragment_get(daq,ev->fragments[i])->buf, i == ev->nfragments_expected - 1 ? last_fragment_size : daq->cfg.fragment_size);
+          //header will always fit in first fragment
+          memcpy(&dest->header, fragment_get(daq, ev->fragments[0])->buf, ev->header_size);
+
+          uint32_t last_fragment_size = ev->nbytes_expected % (daq->cfg.fragment_size);
+
+
+          void * p = &dest->waveform_data[0][0];
+          p = mempcpy(p, fragment_get(daq,ev->fragments[0])->buf + ev->header_size, daq->cfg.fragment_size-ev->header_size);
+          for (int i = 1; i < ev->nfragments_expected; i++)
+          {
+              p = mempcpy( p, fragment_get(daq,ev->fragments[i])->buf, i == ev->nfragments_expected - 1 ? last_fragment_size : daq->cfg.fragment_size);
+          }
   }
 
 
