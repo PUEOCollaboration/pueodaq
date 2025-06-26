@@ -425,6 +425,75 @@ static void allow_ack(pueo_daq_t * daq, uint16_t addr)
 
   // check to make sure we're not double acking.
   assert (!(was  & m));
+
+  //signal the ack thread if it's sleeping
+//  pthread_kill(SIGUSR1, daq->ctl_thread);
+}
+
+
+void fragment_mark_free(pueo_daq_t * daq, const uint32_t *  fragments, unsigned nfragments)
+{
+   for (unsigned i = 0; i < nfragments; i++)
+   {
+      //TODO try to coalesce words, or something, though they'll be scattered all over the place
+      uint32_t frag = fragments[i];
+      uint32_t w = frag / 64;
+      uint32_t b = frag % 64;
+      atomic_fetch_and(&daq->fragments_bitmap[w], ~(1ull << b));
+   }
+}
+
+uint16_t event_buf_find_free(pueo_daq_t * daq)
+{
+
+  int nwords = daq->evbuf_bitmap_size;;
+  int start_word =  0; //event bufs are shared between threads, don't need to do the same sharing as for fragments
+  int word = start_word;
+
+  // we will block until we find one
+  // we should never run out of events because we won't acknowledge an event until we have enough space for a new one.
+  while(true)
+  {
+    uint64_t was = atomic_load(&daq->event_bufs_inuse_bitmap[word]);
+    while (was != ~(0ull))
+    {
+      //this has to exist since we already asserted was is not full
+      int first_free_bit = __builtin_ctzll(~was);
+
+      uint64_t update =  was | (1ull << first_free_bit);
+      //we're in a loop anyway so we can use weak here
+      if (atomic_compare_exchange_weak(&daq->event_bufs_inuse_bitmap[word],&was,update))
+      {
+        return word * 64 + first_free_bit;
+      }
+    }
+
+    // next word
+    word = (word + 1) % nwords;
+
+    // should never happen.
+    assert (word != start_word);
+  }
+}
+
+void event_buf_mark_free(pueo_daq_t * daq, struct event_buf * buf)
+{
+   uint32_t idx = ((uintptr_t) buf - (uintptr_t) daq->event_bufs) / daq->evbuf_sz;
+   uint32_t w = idx / 64;
+   uint32_t b = idx % 64;
+
+   atomic_fetch_and(&daq->event_bufs_ready_bitmap[w], ~(1ull << b));
+   atomic_fetch_and(&daq->event_bufs_inuse_bitmap[w], ~(1ull << b));
+}
+
+
+void event_buf_mark_ready(pueo_daq_t * daq, struct event_buf * buf)
+{
+   uint32_t idx = ((uintptr_t) buf - (uintptr_t) daq->event_bufs) / daq->evbuf_sz;
+   uint32_t w = idx / 64;
+   uint32_t b = idx % 64;
+
+   atomic_fetch_or(&daq->event_bufs_ready_bitmap[w], (1ull << b));
 }
 
 
@@ -439,7 +508,7 @@ static uint32_t fragment_find_free( pueo_daq_t * daq, uint8_t tnum)
   int word = start_word;
 
   // we will block until we find one
-  // we should never run out of fragments because we won't acknowledge an event until we have enough space for a new one. 
+  // we should never run out of fragments because we won't acknowledge an event until we have enough space for a new one.
   while(true)
   {
     uint64_t was = atomic_load(&daq->fragments_bitmap[word]);
@@ -1146,6 +1215,8 @@ int pueo_daq_get_event(pueo_daq_t * daq, pueo_daq_event_data_t * dest)
           }
   }
 
+  // mark fragments as free
+  fragment_mark_free(daq, ev->fragments, ev->nfragments_rcvd);
 
   //reset the event buf
   event_buf_reset(ev);
