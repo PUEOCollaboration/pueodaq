@@ -175,6 +175,10 @@ struct pueo_daq
   // the event buffer
   uint32_t evbuf_sz;
   struct event_buf * event_bufs;
+  uint32_t evbuf_bitmap_size;
+  atomic_uint_fast64_t * event_bufs_inuse_bitmap; //marked if started receiving
+  atomic_uint_fast64_t * event_bufs_ready_bitmap; //marked if ready to readout
+
 
   // the fragment used map. bit is 1 if a fragment has been claimed
   atomic_uint_fast64_t *fragments_bitmap;
@@ -644,8 +648,11 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg)
     fprintf(stderr,"Couldn't mmap event_bufs :( %s\n", strerror(errno));
     daq->event_bufs = NULL;
     goto bail;
-
   }
+
+  daq->evbuf_bitmap_size = (daq->cfg.n_event_bufs + 63) /64;
+  daq->event_bufs_inuse_bitmap = calloc(daq->evbuf_bitmap_size, sizeof(*daq->event_bufs_inuse_bitmap));
+  daq->event_bufs_ready_bitmap = calloc(daq->evbuf_bitmap_size, sizeof(*daq->event_bufs_ready_bitmap));
 
   // set turf address/mask
 
