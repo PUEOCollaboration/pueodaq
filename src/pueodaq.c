@@ -1251,6 +1251,9 @@ void* control_thread(void * arg)
 {
   pueo_daq_t * daq = (pueo_daq_t*) arg;
 
+  // we use this to interrupt the sleep
+  signal(SIGUSR1, signore);
+
   // allow up to TURF_MAX_ACKS acqs at a time since why not
 
   turf_ack_t acks[TURF_MAX_ACKS] = {};
@@ -1343,7 +1346,7 @@ void* control_thread(void * arg)
     }
     else
     {
-      usleep(1000);
+      usleep(100);
     }
 
     // TODO go through and see if there is anything really old that needs to be nacked
