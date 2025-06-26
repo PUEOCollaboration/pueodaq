@@ -711,7 +711,7 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg)
   {
     //TODO: we should protect against multiple instances here by using some sort of external lock on the port
     int opts[] = { SO_RCVBUF, daq->cfg.n_recvthreads == 1 ? 0 : SO_REUSEPORT, SO_RCVBUF, 0 };
-    int opt_vals[] = {  (1 << 20) , 1 , 0 };
+    int opt_vals[] = {  (4 << 20) , 1 , 0 };
     SETUP_SOCK(daq_frg_sck[i], daq->cfg.daq_ports.fragment_in,opts,opt_vals,0);
   }
 
