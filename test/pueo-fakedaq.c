@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 #include <signal.h>
 
@@ -14,16 +15,27 @@ void handler(int signum)
 }
 
 double interval = 1;
+double stats_interval =5;
 uint8_t turfio_mask = 0;
 int debug = 1;
 uint8_t nthreads = 1;
+bool throw_away = false;
 int max_in_flight =32;
 const char * outdir = "/tmp";
 int fraglen = 1024;
 int frag_src_mask = 0x3f;
+int last_idx = 0;
 
 int ready(pueo_daq_t * daq, uint32_t idx)
 {
+
+  last_idx = idx;
+  if (throw_away)
+  {
+    pueo_daq_get_event(daq, NULL);
+    printf("%d bytes from ev %d sent to the bitbucket\n", sizeof(pueo_daq_event_data_t), idx);
+    return 0;
+  }
 
   pueo_daq_event_data_t  * d = calloc(1,sizeof(pueo_daq_event_data_t));
   pueo_daq_get_event(daq, d);
@@ -35,11 +47,13 @@ int ready(pueo_daq_t * daq, uint32_t idx)
   fclose(f);
   free(d);
   printf("%d bytes written to %s\n", nb*sizeof(pueo_daq_event_data_t), fname);
+  return 0;
 }
 
 void usage()
 {
-  printf("pueo-fakedaq [-I SOFTTRIGINTERVAL=1.0] [-T TURFIOMASK=0x0] [-L FRAGLEN=1024] [-t NUMRDRTHREADS=1] [-M MAXINFLIGHT=32] [-o OUTDIR=/tmp] [-d DEBUGLEVEL=1] [-h]\n"); 
+  printf("pueo-fakedaq [-I SOFTTRIGINTERVAL=1.0] [-T TURFIOMASK=0x0] [-L FRAGLEN=1024] [-t NUMRDRTHREADS=1] [-M MAXINFLIGHT=32] [-o OUTDIR=/tmp] [-d DEBUGLEVEL=1] [-STATSINTERVAL = 5] [-h] [-0]\n"); 
+  printf("   -0 means throw everything away (good for benchmarks)\n");
 
 }
 int main (int nargs, char ** args)
@@ -55,6 +69,11 @@ int main (int nargs, char ** args)
       {
         float maybe_interval = atof(args[++i]);
         if (maybe_interval > 0) interval = maybe_interval;
+      }
+      else if (!strcmp(args[i],"-S") && !last)
+      {
+        float maybe_interval = atof(args[++i]);
+        if (maybe_interval > 0) stats_interval = maybe_interval;
       }
       else if (!strcmp(args[i],"-T") && !last)
       {
@@ -83,6 +102,10 @@ int main (int nargs, char ** args)
       else if (!strcmp(args[i],"-o") && !last)
       {
         outdir = args[++i];
+      }
+      else if (!strcmp(args[i],"-0"))
+      {
+	throw_away = true;
       }
       else if (!strcmp(args[i],"-d") && !last)
       {
@@ -117,14 +140,31 @@ int main (int nargs, char ** args)
 
   pueo_daq_dump(daq,stdout, 0);
   int count = 0;
+  struct timespec start;
+  clock_gettime(CLOCK_MONOTONIC, &start);
+  struct timespec last_stats;
+  memcpy(&last_stats, &start, sizeof(start));
   while(!stop)
   {
+    struct timespec now;
     printf("Sending soft trig %d\n", count++);
     pueo_daq_soft_trig(daq);
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    if (now.tv_sec - last_stats.tv_sec + 1e-9 * (now.tv_nsec - last_stats.tv_nsec)  > stats_interval)
+    {
+      memcpy(&last_stats, &now, sizeof(now));
+      pueo_daq_dump(daq,stdout,0);
+    }
     usleep(1e6*interval);
   }
+
+  struct timespec stop;
+  clock_gettime(CLOCK_MONOTONIC, &stop);
   pueo_daq_dump(daq,stdout, 0);
   pueo_daq_stop(daq);
   pueo_daq_destroy(daq);
+  double T = stop.tv_sec - start.tv_sec + 1e-9 * (start.tv_nsec - stop.tv_nsec);
+  printf("Ran for %f seconds, sent triggers at %f Hz, got events at %f Hz\n", T, count/T, last_idx/T);
+
   return 0;
 }
