@@ -75,7 +75,8 @@ DEF(outqwords,      REG_RO(BASE, 0x020))\
 DEF(outevents,      REG_RO(BASE, 0x024))\
 DEF(count_reg,       REG_RO(BASE, 0x028))\
 DEF(ack_count,       BF(BASE, 0x028, 0, 12))\
-DEF(allow_count,     BF(BASE, 0x028, 16, 9))
+DEF(allow_count,     BF(BASE, 0x028, 16, 9))\
+DEF(full_error,      REG_RO(BASE, 0x2c))
 
 
 REG_GROUP(turf_event, 0x18000, EVENT_REGS);

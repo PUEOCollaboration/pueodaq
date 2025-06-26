@@ -1298,7 +1298,8 @@ int pueo_daq_get_stats(pueo_daq_t * daq, pueo_daq_stats_t * st)
       read_reg(daq, &turf_event.count_reg, &counts.as_uint)||
       read_reg(daq, &turf_trig.holdoff_reg, &holdoff.as_uint)||
       read_reg(daq, &turf_trig.running, &running)||
-      read_reg(daq, &turf_event.event_in_reset, &in_reset)
+      read_reg(daq, &turf_event.event_in_reset, &in_reset)||
+      read_reg(daq, &turf_event.full_error, &st->full_err)
      )
   {
     return 1;
