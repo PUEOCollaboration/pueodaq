@@ -98,10 +98,10 @@ void unpack_time(uint64_t val, struct timespec * ts)
 struct event_buf
 {
 
-  _Atomic(uint64_t) first_fragment_packed_time;
-  _Atomic(uint64_t) last_fragment_packed_time;
+  volatile _Atomic(uint64_t) first_fragment_packed_time;
+  volatile _Atomic(uint64_t) last_fragment_packed_time;
 
-  uint64_t event_number; // Sequential event number received
+  uint64_t event_index; // Sequential event number received
                          //
   uint32_t run_number; // Set from daq config
                          //
@@ -112,10 +112,10 @@ struct event_buf
   uint32_t nsamples;
 
   //address for this buf (on the TURF)
-  uint16_t address;
+  volatile uint16_t address;
 
   //number of fragment expected
-  volatile _Atomic(uint16_t) nfragments_expected;
+  volatile uint16_t  nfragments_expected;
 
   //number of fragments received
   volatile _Atomic(uint16_t) nfragments_rcvd;
@@ -176,8 +176,10 @@ struct pueo_daq
   uint32_t evbuf_sz;
   struct event_buf * event_bufs;
   uint32_t evbuf_bitmap_size;
-  atomic_uint_fast64_t * event_bufs_inuse_bitmap; //marked if started receiving
-  atomic_uint_fast64_t * event_bufs_ready_bitmap; //marked if ready to readout
+  volatile atomic_uint_fast16_t last_free_evbuf;
+  volatile atomic_uint_fast16_t last_sent_evbuf;
+  volatile atomic_uint_fast64_t * event_bufs_inuse_bitmap; //marked if started receiving
+  volatile atomic_uint_fast64_t * event_bufs_ready_bitmap; //marked if ready to readout
 
 
   // the fragment used map. bit is 1 if a fragment has been claimed
@@ -230,7 +232,7 @@ struct pueo_daq
   *
   * This gets updated at the beginning and we ack an event by the ctl thread
   */
-  volatile uint32_t addr_map[TURF_NUM_ADDR];
+  volatile atomic_int_fast16_t  addr_map[TURF_NUM_ADDR];
 
   //A bit is set when we can ack an address (i.e. that transfer was completed).
   //This is written to by reader threads and cleared by ctl thread;
@@ -451,24 +453,26 @@ uint16_t event_buf_find_free(pueo_daq_t * daq)
 {
 
   int nwords = daq->evbuf_bitmap_size;;
-  int start_word =  0; //event bufs are shared between threads, don't need to do the same sharing as for fragments
+  uint_fast16_t start_bit = atomic_load(&daq->last_free_evbuf);
+  int start_word = start_bit / 64;
   int word = start_word;
 
   // we will block until we find one
   // we should never run out of events because we won't acknowledge an event until we have enough space for a new one.
   while(true)
   {
-    uint64_t was = atomic_load(&daq->event_bufs_inuse_bitmap[word]);
-    while (was != ~(0ull))
+    volatile uint64_t was = atomic_load(&daq->event_bufs_inuse_bitmap[word]);
+    while ((was & (1ull << 63)) == 0 ) //at least one bit at the end here
     {
       //this has to exist since we already asserted was is not full
-      int first_free_bit = __builtin_ctzll(~was);
+      int next_free_bit = was == 0 ? 0 : 64 - __builtin_clzl(was);
 
-      uint64_t update =  was | (1ull << first_free_bit);
+      uint64_t update =  was | (1ull << next_free_bit);
       //we're in a loop anyway so we can use weak here
       if (atomic_compare_exchange_weak(&daq->event_bufs_inuse_bitmap[word],&was,update))
       {
-        return word * 64 + first_free_bit;
+        atomic_store(&daq->last_free_evbuf, word * 64 + next_free_bit);
+        return word * 64 + next_free_bit;
       }
     }
 
@@ -480,26 +484,63 @@ uint16_t event_buf_find_free(pueo_daq_t * daq)
   }
 }
 
-void event_buf_mark_free(pueo_daq_t * daq, struct event_buf * buf)
+uint16_t event_buf_find_ready(pueo_daq_t * daq)
 {
-   uint32_t idx = ((uintptr_t) buf - (uintptr_t) daq->event_bufs) / daq->evbuf_sz;
+
+  int nwords = daq->evbuf_bitmap_size;;
+  uint_fast16_t start_bit = atomic_load(&daq->last_sent_evbuf);
+  int start_word =  start_bit / 64;
+  int word = start_word;
+
+  // we will block until we find one
+  // we should never run out of events because we won't acknowledge an event until we have enough space for a new one.
+  while(true)
+  {
+    volatile uint64_t was = atomic_load(&daq->event_bufs_ready_bitmap[word]);
+    while (was != 0ull)
+    {
+      //this has to exist since we already asserted was is not empty
+      int first_marked_bit = __builtin_ctzl(was);
+
+      uint64_t update =  was & ~(1ull << first_marked_bit);
+      //we're in a loop anyway so we can use weak here
+      if (atomic_compare_exchange_weak(&daq->event_bufs_inuse_bitmap[word],&was,update))
+      {
+        atomic_store(&daq->last_sent_evbuf, word * 64 +first_marked_bit);
+        return word * 64 + first_marked_bit;
+      }
+    }
+
+    // next word
+    word = (word + 1) % nwords;
+
+    // should never happen.
+    assert (word != start_word);
+  }
+}
+
+
+void event_buf_idx_mark_free(pueo_daq_t * daq, uint32_t idx)
+{
    uint32_t w = idx / 64;
    uint32_t b = idx % 64;
 
-   atomic_fetch_and(&daq->event_bufs_ready_bitmap[w], ~(1ull << b));
    atomic_fetch_and(&daq->event_bufs_inuse_bitmap[w], ~(1ull << b));
 }
 
+void event_buf_mark_free(pueo_daq_t * daq, struct event_buf * buf)
+{
+   uint32_t idx = (((char*) buf) - ((char*) daq->event_bufs)) / daq->evbuf_sz;
+   event_buf_idx_mark_free(daq,idx);
+}
 
 void event_buf_mark_ready(pueo_daq_t * daq, struct event_buf * buf)
 {
-   uint32_t idx = ((uintptr_t) buf - (uintptr_t) daq->event_bufs) / daq->evbuf_sz;
+   uint32_t idx = (((char*) buf) - ((char*) daq->event_bufs)) / daq->evbuf_sz;
    uint32_t w = idx / 64;
    uint32_t b = idx % 64;
-
    atomic_fetch_or(&daq->event_bufs_ready_bitmap[w], (1ull << b));
 }
-
 
 
 static uint32_t fragment_find_free( pueo_daq_t * daq, uint8_t tnum)
@@ -515,11 +556,11 @@ static uint32_t fragment_find_free( pueo_daq_t * daq, uint8_t tnum)
   // we should never run out of fragments because we won't acknowledge an event until we have enough space for a new one.
   while(true)
   {
-    uint64_t was = atomic_load(&daq->fragments_bitmap[word]);
+    volatile uint64_t was = atomic_load(&daq->fragments_bitmap[word]);
     while (was != ~(0ull))
     {
       //this has to exist since we already asserted was is not full
-      int first_free_bit = __builtin_ctzll(~was);
+      int first_free_bit = __builtin_ctzl(~was);
 
       uint64_t update =  was | (1ull << first_free_bit);
       //we're in a loop anyway so we can use weak here
@@ -537,12 +578,80 @@ static uint32_t fragment_find_free( pueo_daq_t * daq, uint8_t tnum)
   }
 }
 
-static struct  event_buf * event_buf_for_addr(pueo_daq_t * daq, uint16_t addr)
+static uint32_t surprise = 0;
+static struct  event_buf * event_buf_for_fragment(pueo_daq_t * daq, turf_fraghdr_t fhdr, bool *first)
 {
-  // The index of this address
-  uint32_t evnum = daq->addr_map[addr];
-  uint16_t ev_index = evnum % daq->cfg.n_event_bufs;
-  return event_buf_get(daq,ev_index);
+  uint16_t addr = fhdr.BIT.ADDR;
+
+  // check if -1 
+  volatile int_fast16_t was = atomic_load(&daq->addr_map[addr]);
+
+  while (was == -1)
+  {
+    //let's set it to -2 which should signal to other threads that they should wait for us
+    //if we fail to do so, maybe another thread has alreayd set it to -2 2
+
+    if (atomic_compare_exchange_weak(&daq->addr_map[addr],&was, -2))
+          break;
+  }
+
+  //another thread is initalizing this, let's wait for it, it shouldn't take long
+  //should we use a mutex instead? I don't know. This should be like, really fast.
+  while (was == -2)
+  {
+    usleep(1); ///
+    was = atomic_load(&daq->addr_map[addr]);
+  }
+
+  if (was >=0 )
+  {
+    struct event_buf * ev= event_buf_get(daq, was);
+    while(!atomic_load(&ev->first_fragment_packed_time)); // make sure the event is fully initialized
+    return ev;
+  }
+
+
+  assert (was==-1);
+
+
+  uint16_t free_event = event_buf_find_free( daq);
+
+  int_fast16_t is = -2;
+
+
+
+  // we'll be extra careful here. I don't THINK multiple threads can get here but...
+  if (!atomic_compare_exchange_strong(&daq->addr_map[addr], &is, free_event))
+  {
+    surprise++;
+    if (is >= 0) //ok someone else changed but that's ok, even though it doesn't seem like it should happen
+    {
+      //all that work for nothing!
+      event_buf_idx_mark_free(daq, free_event);
+      struct event_buf * ev = event_buf_get(daq,is % daq->cfg.n_event_bufs);
+      while( (volatile uint64_t) !atomic_load(&ev->first_fragment_packed_time)); // make sure the event is fully initialized
+      return ev;
+   }
+
+    // we done fucked up
+    abort();
+
+  }
+  struct event_buf * ev = event_buf_get(daq, free_event);
+  ev->nfragments_expected  = (fhdr.BIT.TOTAL + daq->cfg.fragment_size -1) / daq->cfg.fragment_size;
+  struct timespec now;
+  clock_gettime(CLOCK_MONOTONIC,&now);
+  uint64_t packed_now = pack_time(now);
+
+  //TODO are there race conditions here?
+  ev->run_number = daq->run_number;
+  ev->event_index = atomic_fetch_add(&daq->num_events_discovered,1);
+  ev->nbytes_expected = fhdr.BIT.TOTAL;
+  //TODO: should we use SO_TIMESTAMP[NS]?
+  ev->address = addr;
+  atomic_store(&ev->first_fragment_packed_time, packed_now);
+  *first = true;
+  return ev;
 }
 
 
@@ -554,7 +663,7 @@ static int event_buf_reset(struct event_buf * evbuf)
   evbuf->nbytes_expected = 0;
   evbuf->nsamples = 0;
   evbuf->header_size = 0;
-  evbuf->event_number = 0;
+  evbuf->event_index = 0;
   evbuf->run_number = 0;
   evbuf->first_fragment_packed_time = 0;
   evbuf->last_fragment_packed_time = 0;
@@ -710,7 +819,7 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg)
   for (unsigned i = 0; i < daq->cfg.n_recvthreads; i++ )
   {
     //TODO: we should protect against multiple instances here by using some sort of external lock on the port
-    int opts[] = { SO_RCVBUF, daq->cfg.n_recvthreads == 1 ? 0 : SO_REUSEPORT, SO_RCVBUF, 0 };
+    int opts[] = { SO_RCVBUF, daq->cfg.n_recvthreads == 1 ? 0 : SO_REUSEPORT, 0 };
     int opt_vals[] = {  (4 << 20) , 1 , 0 };
     SETUP_SOCK(daq_frg_sck[i], daq->cfg.daq_ports.fragment_in,opts,opt_vals,0);
   }
@@ -844,7 +953,7 @@ int pueo_daq_start(pueo_daq_t * daq)
       acks[j].BIT.ADDR = i+j;
       acks[j].BIT.TAG = i + j;
       acks[j].BIT.ALLOW = !!(nallow-- > 0);
-      daq->addr_map[i+j] = i+j;
+      daq->addr_map[i+j] = -1;
     }
 
     if (acked_multisend(daq, daq->net.daq_frgctl_sck, TURF_PORT_ACK, TURF_MAX_ACKS, acks,
@@ -855,7 +964,7 @@ int pueo_daq_start(pueo_daq_t * daq)
     }
   }
 
-  daq->num_addr_assigned = TURF_NUM_ADDR;
+  daq->num_addr_assigned = 0;
   if (write_reg(daq, &turf_trig.runcmd, RUNCMD_RESET))
   {
     fprintf(stderr,"Could not run runcmd\n");
@@ -869,7 +978,7 @@ int pueo_daq_start(pueo_daq_t * daq)
 
 int pueo_daq_stop(pueo_daq_t * daq)
 {
-  int state = atomic_load(&daq->state);
+  volatile int state = atomic_load(&daq->state);
   if (state == PUEODAQ_RUNNING || state == PUEODAQ_UNINIT)
   {
     if (write_reg(daq, &turf_trig.runcmd, RUNCMD_STOP))
@@ -1058,7 +1167,7 @@ void * reader_thread(void *arg)
 
   while(1)
   {
-    int state = atomic_load(&daq->state);
+    volatile int state = atomic_load(&daq->state);
     // we should do nothing
     if (state == PUEODAQ_IDLE || state == PUEODAQ_UNINIT || state == PUEODAQ_STARTING)
     {
@@ -1092,41 +1201,18 @@ void * reader_thread(void *arg)
     uint16_t fragnum = frag->hd.BIT.FRAGMENT;
     uint16_t addr = frag->hd.BIT.ADDR;
     //uint32_t kid = frag->hd.BIT.KID;
-    uint32_t evlen = frag->hd.BIT.TOTAL;
+//    uint32_t evlen = frag->hd.BIT.TOTAL;
 
-    //this will update nfragments_expected (and nbytes expected if it's the first time we see this event
-    struct event_buf * ev = event_buf_for_addr(daq, addr);
+    //this will do some initializaiton if the first event
+    bool first = false;
+    struct event_buf * ev = event_buf_for_fragment(daq,  frag->hd, &first);
+    if (daq->cfg.debug > 0 && first) printf("thd %d recvd %ld bytes from unencountered address (frag %d, addr %hu, evbuf: 0x%p)\n", s->tnum, nrecv, frag_i, addr, ev);
 
     struct timespec now;
-
-    //set nfragments_expected if it hasn't been set already
-    uint16_t zero = 0;
-    if (atomic_compare_exchange_strong(&ev->nfragments_expected,&zero, (evlen + daq->cfg.fragment_size -1) / daq->cfg.fragment_size))
-    {
-
-      clock_gettime(CLOCK_MONOTONIC,&now);
-      uint64_t packed_now = pack_time(now);
-
-      //TODO are there race conditions here?
-      ev->run_number = daq->run_number;
-      ev->event_number = atomic_fetch_add(&daq->num_events_discovered,1);
-      ev->nbytes_expected = evlen;
-      //TODO: should we use SO_TIMESTAMP[NS]?
-      ev->address = addr;
-      atomic_store(&ev->first_fragment_packed_time, packed_now);
-      if (daq->cfg.debug > 0) printf("thd %d recvd %ld bytes from unencountered address (frag %d, addr %hu, evbuf: 0x%p)\n", s->tnum, nrecv, frag_i, addr, ev);
-    }
-    else
-    {
-      while(!atomic_load(&ev->first_fragment_packed_time)); // make sure the event is fully initialized
-    }
-
-    // store current time
     // this will be used by the nack detector
     clock_gettime(CLOCK_MONOTONIC, &now);
     uint64_t packed_now = pack_time(now);
     atomic_store(&ev->last_fragment_packed_time, packed_now);
-
     ev->fragments[fragnum] = frag_i;
 
     if (fragnum == 0) //do some preprocessing on header
@@ -1136,20 +1222,21 @@ void * reader_thread(void *arg)
       ev->nsamples = (ev->nbytes_expected -  ev->header_size) / PUEODAQ_NCHAN / 2;
     }
 
+
     //add fragments received
     uint16_t prior = atomic_fetch_add(&ev->nfragments_rcvd, 1);
-    if (daq->cfg.debug > 1) printf("[fragnum=%hu][addr=%hu](nrecv=%hu/%hu) @ %ld.%09ld\n",fragnum, addr, 1+prior, ev->nfragments_expected, now.tv_sec, now.tv_nsec);
+   if (daq->cfg.debug > 1) printf("[fragnum=%hu][addr=%hu](nrecv=%hu/%hu) @ %ld.%09ld\n",fragnum, addr, 1+prior, ev->nfragments_expected, now.tv_sec, now.tv_nsec);
 
     // we finished.I think this is ok since we can't get more than nfagments_expected fragments, right?
     if (prior == ev->nfragments_expected -1)
     {
       uint32_t rcv_idx = atomic_fetch_add(&daq->num_events_received, 1);
 
-      if (daq->cfg.debug > 0) printf("thd %d recvd last %ld bytes from address (frag %d, addr %hu, evbuf: 0x%p)\n", s->tnum, nrecv, frag_i, addr, ev);
+      if (daq->cfg.debug > 0) printf("thd %d recvd last %ld bytes from address (frag %d, addr %hu, evbuf: 0x%p, expected: %hu)\n", s->tnum, nrecv, frag_i, addr, ev, ev->nfragments_expected );
 
       // schedule an ack if we have room for another event
+      event_buf_mark_ready(daq,ev);
       allow_ack(daq, ev->address);
-
       if (daq->cb) daq->cb(daq, rcv_idx);
     }
   }
@@ -1176,13 +1263,18 @@ int pueo_daq_dump(pueo_daq_t * daq, FILE * stream, int flags)
   fprintf(stream, "turf_stats{\n" PUEODAQ_STATS_JSON_FORMAT"}\n", PUEODAQ_STATS_VALS(st));
 
 
+  pueo_daq_scalers_t sc;
+  pueo_daq_get_scalers(daq, &sc);
+  pueo_daq_scalers_dump(stream, &sc);
+
+
   return r;
 }
 
 int pueo_daq_nready(const pueo_daq_t * daq)
 {
-  uint32_t rcv = atomic_load(&daq->num_events_received);
-  uint32_t dis = atomic_load(&daq->num_events_dispensed);
+  volatile uint32_t rcv = atomic_load(&daq->num_events_received);
+  volatile uint32_t dis = atomic_load(&daq->num_events_dispensed);
   return rcv - dis;
 }
 
@@ -1197,8 +1289,9 @@ int pueo_daq_get_event(pueo_daq_t * daq, pueo_daq_event_data_t * dest)
 {
   pueo_daq_wait_event(daq);
 
-  uint32_t started = atomic_fetch_add(&daq->num_events_dispense_began,1);
-  struct event_buf * ev = event_buf_get(daq, started % daq->cfg.n_event_bufs);
+  atomic_fetch_add(&daq->num_events_dispense_began,1);
+  uint16_t idx = event_buf_find_ready(daq);
+  struct event_buf * ev = event_buf_get(daq, idx);
 
   assert(ev->header_size);
 
@@ -1229,6 +1322,8 @@ int pueo_daq_get_event(pueo_daq_t * daq, pueo_daq_event_data_t * dest)
   event_buf_reset(ev);
 
   //all done, we can release the event buf now
+  event_buf_mark_free(daq,ev);
+
   atomic_fetch_add(&daq->num_events_dispensed,1);
 
   return 0;
@@ -1267,7 +1362,7 @@ void* control_thread(void * arg)
   while(true)
   {
 
-    int state = atomic_load(&daq->state);
+    volatile int state = atomic_load(&daq->state);
     if (state == PUEODAQ_STOPPING || state == PUEODAQ_ERROR)
     {
       break;
@@ -1281,8 +1376,8 @@ void* control_thread(void * arg)
 
     // Do we have room to ack?
     // Note that we are the only thread (other than the main thread) that touches num_events_allowed
-    uint32_t dispensed = atomic_load(&daq->num_events_dispensed);
-    uint32_t discovered = atomic_load(&daq->num_events_discovered);
+    volatile uint32_t dispensed = atomic_load(&daq->num_events_dispensed);
+    volatile uint32_t discovered = atomic_load(&daq->num_events_discovered);
 
     assert(dispensed <= daq->num_events_allowed);
 
@@ -1300,7 +1395,7 @@ void* control_thread(void * arg)
       for (unsigned w = 0; w < sizeof(daq->ack_map) / sizeof(*daq->ack_map); w++)
       {
         if (num_acks >=TURF_MAX_ACKS || num_acks >= capacity) break;
-        uint64_t word = atomic_load(&daq->ack_map[w]);
+        volatile uint64_t word = atomic_load(&daq->ack_map[w]);
 
         if (word != 0) // we have a candidate to ack!
         {
@@ -1336,9 +1431,9 @@ void* control_thread(void * arg)
         //increment the addresses, clear the ack bis
         for (unsigned i = 0; i < num_acks; i++)
         {
-          uint16_t addr = acks[num_acks-1].BIT.ADDR;
+          uint16_t addr = acks[i].BIT.ADDR;
           printf("Sent ack for %hu\n", addr);
-          daq->addr_map[addr] = daq->num_addr_assigned++;
+          atomic_store(&daq->addr_map[addr],-1); //maybe doesn't need to be atomic?
           atomic_fetch_and(&daq->ack_map[addr/64], ~(1ull << (addr % 64)));
         }
       }
