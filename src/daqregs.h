@@ -100,6 +100,7 @@ DEF(cratepps_en,          BF (BASE, 0x8, 0, 1))  \
 DEF(mask,                 REG(BASE,0x100))  \
 DEF(latency,              BF (BASE,0x104,0,16))  \
 DEF(offset,               BF (BASE,0x104,0,16))  \
+DEF(pps_reg,              REG(BASE,0x108))\
 DEF(pps_trig_enable,      BF (BASE,0x108,0,1))   \
 DEF(pps_offset,           BF (BASE,0x108,16,16)) \
 DEF(ext_trig_enable,      BF (BASE,0x10c,0,1))   \
@@ -112,7 +113,9 @@ DEF(holdoff_reg,          REG(BASE, 0x118)) \
 DEF(holdoff,              BF (BASE, 0x118, 0, 16)) \
 DEF(surf_err,             BF (BASE, 0x118, 16, 1)) \
 DEF(turf_err,             BF (BASE, 0x118, 17, 1)) \
-DEF(trigger_count,     REG_RO(BASE, 0x11c))
+DEF(trigger_count,     REG_RO(BASE, 0x11c))\
+DEF(scaler_base,       REG_RO(BASE, 0x300))\
+DEF(scaler_max,       REG_RO(BASE, 0x37c))
 
 REG_GROUP(turf_trig, 0x1c000, TRIG_REGS);
 

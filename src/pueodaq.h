@@ -278,5 +278,30 @@ int pueo_daq_get_stats(pueo_daq_t * daq,  pueo_daq_stats_t * stats);
 
 
 
+typedef struct pueo_daq_scalers
+{
+  struct timespec readout_time;
+  union
+  {
+    uint32_t v[32]; // by scaler
+    struct
+    {
+      uint32_t turfio0_slots[7];
+      uint32_t soft;
+      uint32_t turfio1_slots[7];
+      uint32_t pps;
+      uint32_t turfio2_slots[7];
+      uint32_t ext;
+      uint32_t turfio3_slots[7];
+      uint32_t reserved;
+    } map;
+  }scalers;
+} pueo_daq_scalers_t;
+
+
+int pueo_daq_pps_setup(pueo_daq_t *daq, bool enable, uint16_t offset);
+
+int pueo_daq_get_scalers(pueo_daq_t * daq, pueo_daq_scalers_t* s);
+int pueo_daq_scalers_dump(FILE *f, const pueo_daq_scalers_t * s);
 
 

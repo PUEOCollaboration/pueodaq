@@ -1497,3 +1497,46 @@ int pueo_daq_get_stats(pueo_daq_t * daq, pueo_daq_stats_t * st)
   return 0;
 }
 
+int pueo_daq_get_scalers(pueo_daq_t * daq, pueo_daq_scalers_t* s)
+{
+  if (!s) return -1;
+  reg_t reg = turf_trig.scaler_base;
+  reg_t end = turf_trig.scaler_max;
+  clock_gettime(CLOCK_REALTIME, &s->readout_time);
+
+  int count = 0;
+  while (reg.addr <= end.addr)
+  {
+    if (read_reg(daq, &reg, &s->scalers.v[count++])) return 1;
+    reg.addr+=4;
+  }
+
+  return 0;
+}
+
+int pueo_daq_scalers_dump(FILE *f, const pueo_daq_scalers_t * s)
+{
+  int ret = fprintf(f,"TURF Scalers @ %lu.%09lu\n", s->readout_time.tv_sec, s->readout_time.tv_nsec);
+  ret +=    fprintf(f,"   soft: %hu,  pps: %hu,  ext: %hu,  reserved: %hu\n", s->scalers.map.soft, s->scalers.map.pps, s->scalers.map.ext, s->scalers.map.reserved);
+  for (int i = 0; i < 4; i++)
+  {
+    const uint32_t *v = i == 0 ? s->scalers.map.turfio0_slots :
+                  i == 1 ? s->scalers.map.turfio1_slots :
+                  i == 2 ? s->scalers.map.turfio2_slots :
+                           s->scalers.map.turfio3_slots ;
+    ret += fprintf(f,"   TFIO%d: %u %u %u %u %u %u %u\n", i,
+                          v[0], v[1], v[2], v[3], v[4], v[5], v[6]);
+  }
+
+  return ret;
+
+}
+
+int pueo_daq_pps_setup(pueo_daq_t *daq, bool enable, uint16_t offset)
+{
+  uint32_t val =  enable;
+  val |= offset << 16;
+  return write_reg(daq, &turf_trig.pps_reg, val);
+}
+
+
