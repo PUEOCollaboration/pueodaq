@@ -39,7 +39,7 @@ int ready(pueo_daq_t * daq, uint32_t idx)
 
   pueo_daq_event_data_t  * d = calloc(1,sizeof(pueo_daq_event_data_t));
   pueo_daq_get_event(daq, d);
-  printf("   Got event number is %u/%u\n", d->header.vals.event_number, idx);
+  printf("   Got event number %u (rcv idx %u)\n", d->header.vals.event_number, idx);
   char fname[512];
   sprintf(fname,"%s/fakedaq_%05d.dat", outdir, idx);
   FILE * f  = fopen(fname,"w");
@@ -135,6 +135,8 @@ int main (int nargs, char ** args)
   if (!daq) return 1;
 
   pueo_daq_register_ready_callback(daq, ready);
+
+  pueo_daq_pps_setup(daq,true,0);
 
   pueo_daq_start(daq);
 
