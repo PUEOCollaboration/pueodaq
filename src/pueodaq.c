@@ -1539,9 +1539,14 @@ int pueo_daq_scalers_dump(FILE *f, const pueo_daq_scalers_t * s)
 
 int pueo_daq_pps_setup(pueo_daq_t *daq, bool enable, uint16_t offset)
 {
-  uint32_t val =  enable;
-  val |= offset << 16;
-  return write_reg(daq, &turf_trig.pps_reg, val);
+
+  //first disable the pps, in case it doesn't like being set when enabled
+  if (write_reg(daq, &turf_trig.pps_trig_enable, 0)) return 1;
+  if ( write_reg(daq, &turf_trig.pps_offset, offset)) return 1;
+  if (enable)
+     if (write_reg(daq, &turf_trig.pps_trig_enable, 1)) return 1;
+
+  return 0;
 }
 
 
