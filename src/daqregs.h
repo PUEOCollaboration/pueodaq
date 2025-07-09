@@ -97,6 +97,7 @@ typedef union
 DEF(runcmd,               REG(BASE, 0x0))   \
 DEF(fwudata,              REG(BASE, 0x4))   \
 DEF(cratepps_en,          BF (BASE, 0x8, 0, 1))  \
+DEF(rundly,               BF (BASE, 0x0, 8, 4))  \
 DEF(mask,                 REG(BASE,0x100))  \
 DEF(latency,              BF (BASE,0x104,0,16))  \
 DEF(offset,               BF (BASE,0x104,0,16))  \

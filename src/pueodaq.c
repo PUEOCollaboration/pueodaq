@@ -940,6 +940,11 @@ int pueo_daq_start(pueo_daq_t * daq)
   }
 
 
+  //set up rundl
+  if (write_reg(daq, &turf_trig.rundly, 3))
+  {
+    fprintf(stderr,"Coudn't set rundly\n");
+  }
 
 
   //setup all acks, batch in groups of TURF_MAX_ACKS
