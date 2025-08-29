@@ -63,12 +63,14 @@ write_reg(pueo_daq_t * daq, const reg_t * reg, uint32_t val)
   assert (!reg->ro);
   val <<= reg->offs;
   val &= reg->mask;
+
+  // we have to load the old value in this case
   if (reg->len!=32)
   {
-    uint32_t current;
+    uint32_t current = 0;
     if (read_reg(daq, reg, &current))
     {
-      fprintf(stderr,"Could not read old reg\n");
+      fprintf(stderr,"Could not read reg for partial write\n");
       return -1;
     }
     val |= current & (~reg->mask);
@@ -583,7 +585,7 @@ static struct  event_buf * event_buf_for_fragment(pueo_daq_t * daq, turf_fraghdr
 {
   uint16_t addr = fhdr.BIT.ADDR;
 
-  // check if -1 
+  // check if -1
   volatile int_fast16_t was = atomic_load(&daq->addr_map[addr]);
 
   while (was == -1)
