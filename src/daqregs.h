@@ -151,6 +151,11 @@ DEF(panic_counter,  REG_RO(BASE,0x01c))
 REG_GROUP(turf_time, 0x1a000, TIME_REGS);
 
 
+//inferred from reading pueo-python code, please check these someone who knows what they're doing!
+#define TURF_BASE 0
+#define TURFIO_BASE(link) ((1<<27) + (1 <<25)*link)
+#define SURF_BASE(link, slot) (  TURFIO_BASE(link) + 0x400000*(slot+1))
+
 #define SURF_REGS(DEF,BASE)  \
 DEF (reset_lol,       BF (BASE,0x0c,0,1)) \
 DEF (fp_led,          BF (BASE,0x0c,1,2)) \
@@ -170,6 +175,18 @@ DEF (cal_frozen,   BF_RO (BASE,0x18,8,8)) \
 DEF (adc_sigdet,   BF_RO (BASE,0x18,16,8)) \
 
 REG_GROUP(surf, 0x0, SURF_REGS);
+
+
+#define SURFL1_REGS(DEF,BASE) \
+  DEF( scaler_base,               REG(BASE,0x400))\
+  DEF( threshold_base,            REG(BASE,0x800))\
+  DEF( something_important,       REG(BASE,0x1000))\
+  DEF( something_else_important,  REG(BASE,0x1008))\
+  DEF( also_important,            REG(BASE,0x100c))\
+  DEF( does_this_apply_thresholds,REG(BASE,0x1800))
+
+
+REG_GROUP(surfL1, 0x8000, SURFL1_REGS);
 
 //undef some names that might clash
 #undef REG
