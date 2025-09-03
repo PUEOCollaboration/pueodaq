@@ -148,6 +148,25 @@ DEF(panic_counter,  REG_RO(BASE,0x01c))
 REG_GROUP(turf_time, 0x1a000, TIME_REGS);
 
 
+#define SURF_REGS(DEF,BASE)  \
+DEF (reset_lol,       BF (BASE,0x0c,0,1)) \
+DEF (fp_led,          BF (BASE,0x0c,1,2)) \
+DEF (cal_use_rack,    BF (BASE,0x0c,3,1)) \
+DEF (cal_path_en,     BF (BASE,0x0c,4,1)) \
+DEF (trig_path_en,    BF (BASE,0x0c,6,1)) \
+DEF (fw_loading,      BF (BASE,0x0c,7,1)) \
+DEF (align_err,       BF (BASE,0x0c,8,1)) \
+DEF (lol,          BF_RO (BASE,0x0c,13,1)) \
+DEF (sync_offset,     BF (BASE,0x0c,16,5)) \
+DEF (live_seen,       BF (BASE,0x0c,22,1)) \
+DEF (sync_seen,       BF (BASE,0x0c,23,1)) \
+DEF (rfdc_reset,      BF (BASE,0x0c,25,1)) \
+DEF (sysref_phase,REG_RO (BASE,0x14)) \
+DEF (cal_freeze,      BF (BASE,0x18,0,8)) \
+DEF (cal_freeze,   BF_RO (BASE,0x18,8,8)) \
+DEF (adc_sigdet,   BF_RO (BASE,0x18,16,8)) \
+
+
 //undef some names that might clash
 #undef REG
 #undef REG_RO
