@@ -178,12 +178,12 @@ REG_GROUP(surf, 0x0, SURF_REGS);
 
 
 #define SURFL1_REGS(DEF,BASE) \
-  DEF( scaler_base,               REG(BASE,0x400))\
-  DEF( threshold_base,            REG(BASE,0x800))\
-  DEF( something_important,       REG(BASE,0x1000))\
-  DEF( something_else_important,  REG(BASE,0x1008))\
-  DEF( also_important,            REG(BASE,0x100c))\
-  DEF( does_this_apply_thresholds,REG(BASE,0x1800))
+  DEF( scaler_base,              REG_RO(BASE,0x400))\
+  DEF( threshold_base,              REG(BASE,0x800))\
+  DEF( something_important,         REG(BASE,0x1000))\
+  DEF( something_else_important,    REG(BASE,0x1008))\
+  DEF( also_important,              REG(BASE,0x100c))\
+  DEF( does_this_apply_thresholds,  REG(BASE,0x1800))
 
 
 REG_GROUP(surfL1, 0x8000, SURFL1_REGS);
