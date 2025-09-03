@@ -120,6 +120,9 @@ DEF(scaler_max,       REG_RO(BASE, 0x37c))
 
 REG_GROUP(turf_trig, 0x1c000, TRIG_REGS);
 
+
+
+
 //TODO  this should be automatically generated probably
 typedef union
 {
@@ -163,9 +166,10 @@ DEF (sync_seen,       BF (BASE,0x0c,23,1)) \
 DEF (rfdc_reset,      BF (BASE,0x0c,25,1)) \
 DEF (sysref_phase,REG_RO (BASE,0x14)) \
 DEF (cal_freeze,      BF (BASE,0x18,0,8)) \
-DEF (cal_freeze,   BF_RO (BASE,0x18,8,8)) \
+DEF (cal_frozen,   BF_RO (BASE,0x18,8,8)) \
 DEF (adc_sigdet,   BF_RO (BASE,0x18,16,8)) \
 
+REG_GROUP(surf, 0x0, SURF_REGS);
 
 //undef some names that might clash
 #undef REG
