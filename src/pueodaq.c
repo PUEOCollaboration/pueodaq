@@ -46,19 +46,27 @@ struct fragment
   int16_t buf[];
 };
 
+typedef struct
+{
+  uint8_t slot : 3;
+  uint8_t link : 2;
+  uint8_t zero : 2;
+} surf_t;
+
 
 static int __attribute__((nonnull))
-read_reg(pueo_daq_t * daq, const reg_t * reg, uint32_t * val)
+read_based_reg(pueo_daq_t * daq, uint32_t base, const reg_t * reg, uint32_t * val)
 {
 
-  int r = pueo_daq_read(daq, reg->addr, val);
+  int r = pueo_daq_read(daq, reg->addr+base, val);
   (*val) &=reg->mask;
   (*val)>>=reg->offs;
   return r;
 }
 
+
 static int  __attribute__((nonnull))
-write_reg(pueo_daq_t * daq, const reg_t * reg, uint32_t val)
+write_based_reg(pueo_daq_t * daq, uint32_t base, const reg_t * reg, uint32_t val)
 {
   assert (!reg->ro);
   val <<= reg->offs;
@@ -68,7 +76,7 @@ write_reg(pueo_daq_t * daq, const reg_t * reg, uint32_t val)
   if (reg->len!=32)
   {
     uint32_t current = 0;
-    if (read_reg(daq, reg, &current))
+    if (read_based_reg(daq, base, reg, &current))
     {
       fprintf(stderr,"Could not read reg for partial write\n");
       return -1;
@@ -76,9 +84,32 @@ write_reg(pueo_daq_t * daq, const reg_t * reg, uint32_t val)
     val |= current & (~reg->mask);
   }
 
-  return pueo_daq_write(daq, reg->addr, val);
+  return pueo_daq_write(daq, base+reg->addr, val);
 }
 
+static int  __attribute__((nonnull))
+write_turf_reg(pueo_daq_t * daq, const reg_t * reg, uint32_t val)
+{
+  return write_based_reg(daq, TURF_BASE, reg, val);
+}
+
+static int __attribute__((nonnull))
+read_turf_reg(pueo_daq_t * daq, const reg_t * reg, uint32_t * val)
+{
+  return read_based_reg(daq,TURF_BASE, reg, val);
+}
+
+static int  __attribute__((nonnull))
+write_surf_reg(pueo_daq_t * daq, surf_t surf, const reg_t * reg, uint32_t val)
+{
+  return write_based_reg(daq, SURF_BASE(surf.link, surf.slot), reg, val);
+}
+
+static int __attribute__((nonnull))
+read_surf_reg(pueo_daq_t * daq, surf_t surf, const reg_t * reg, uint32_t * val)
+{
+  return read_based_reg(daq,SURF_BASE(surf.link, surf.slot), reg, val);
+}
 
 
 static uint64_t pack_time(struct timespec ts)
@@ -887,15 +918,15 @@ int pueo_daq_start(pueo_daq_t * daq)
 
   // read and write the bit
   uint32_t reset = 0;
-  if (read_reg(daq, &turf_event.event_in_reset, &reset))
+  if (read_turf_reg(daq, &turf_event.event_in_reset, &reset))
   {
     fprintf(stderr,"Could_not read event_in_reset\n");
     return 1;
   }
   if (!reset)
   {
-    if (write_reg(daq, &turf_event.event_reset, 1)
-        || write_reg(daq, &turf_event.event_reset, 0))
+    if (write_turf_reg(daq, &turf_event.event_reset, 1)
+        || write_turf_reg(daq, &turf_event.event_reset, 0))
     {
       fprintf(stderr,"Could not write event_reset\n");
 
@@ -923,19 +954,19 @@ int pueo_daq_start(pueo_daq_t * daq)
 
 
  //turfio mask, etc.
-  if (write_reg(daq, &turf_event.mask, daq->cfg.turfio_mask))
+  if (write_turf_reg(daq, &turf_event.mask, daq->cfg.turfio_mask))
   {
     fprintf(stderr,"Couldn't write turfio mask\n");
   }
 
   if (daq->cfg.turfio_mask != 0xf)
   {
-    if (write_reg(daq, &turf_trig.latency, 200))
+    if (write_turf_reg(daq, &turf_trig.latency, 200))
     {
       fprintf(stderr,"Couldn't write trig latency\n");
     }
 
-    if (write_reg(daq, &turf_trig.offset, 0))
+    if (write_turf_reg(daq, &turf_trig.offset, 0))
     {
       fprintf(stderr,"Couldn't write trig offset\n");
     }
@@ -943,7 +974,7 @@ int pueo_daq_start(pueo_daq_t * daq)
 
 
   //set up rundl
-  if (write_reg(daq, &turf_trig.rundly, 3))
+  if (write_turf_reg(daq, &turf_trig.rundly, 3))
   {
     fprintf(stderr,"Coudn't set rundly\n");
   }
@@ -972,7 +1003,7 @@ int pueo_daq_start(pueo_daq_t * daq)
   }
 
   daq->num_addr_assigned = 0;
-  if (write_reg(daq, &turf_trig.runcmd, RUNCMD_RESET))
+  if (write_turf_reg(daq, &turf_trig.runcmd, RUNCMD_RESET))
   {
     fprintf(stderr,"Could not run runcmd\n");
     return 1;
@@ -988,7 +1019,7 @@ int pueo_daq_stop(pueo_daq_t * daq)
   volatile int state = atomic_load(&daq->state);
   if (state == PUEODAQ_RUNNING || state == PUEODAQ_UNINIT)
   {
-    if (write_reg(daq, &turf_trig.runcmd, RUNCMD_STOP))
+    if (write_turf_reg(daq, &turf_trig.runcmd, RUNCMD_STOP))
     {
       fprintf(stderr,"Could not run runcmd\n");
       return 1;
@@ -1034,11 +1065,11 @@ int pueo_daq_reset(pueo_daq_t * daq)
   daq->num_events_allowed = 0;
 
   // reset tags on TURFS
-  read_reg(daq,&turf.turfid,&daq->census.turfid);
+  read_turf_reg(daq,&turf.turfid,&daq->census.turfid);
   printf("TURFID: %0x\n", daq->census.turfid);
 
   //read date version
-  read_reg(daq,&turf.dateversion,&daq->census.turf_datever);
+  read_turf_reg(daq,&turf.dateversion,&daq->census.turf_datever);
   printf("DATEVER: %0x\n", daq->census.turf_datever);
 
   //TODO take a census of who we have
@@ -1459,7 +1490,7 @@ void* control_thread(void * arg)
 
 int pueo_daq_soft_trig(pueo_daq_t * daq)
 {
-  return write_reg(daq, &turf_trig.softrig, 1);
+  return write_turf_reg(daq, &turf_trig.softrig, 1);
 }
 
 int pueo_daq_get_stats(pueo_daq_t * daq, pueo_daq_stats_t * st)
@@ -1469,25 +1500,25 @@ int pueo_daq_get_stats(pueo_daq_t * daq, pueo_daq_stats_t * st)
   event_count_reg_t counts;
   holdoff_reg_t holdoff;
   if (
-      read_reg(daq, &turf_event.ndwords0, &st->turfio_words_recv[0]) ||
-      read_reg(daq, &turf_event.ndwords1, &st->turfio_words_recv[1]) ||
-      read_reg(daq, &turf_event.ndwords2, &st->turfio_words_recv[2]) ||
-      read_reg(daq, &turf_event.ndwords3, &st->turfio_words_recv[3]) ||
-      read_reg(daq, &turf_event.outqwords, &st->qwords_sent) ||
-      read_reg(daq, &turf_event.outevents, &st->events_sent) ||
-      read_reg(daq, &turf_trig.trigger_count, &st->trigger_count)||
-      read_reg(daq, &turf_trig.occupancy, &st->occupancy)||
-      read_reg(daq, &turf_time.current_second, &st->current_second)||
-      read_reg(daq, &turf_time.last_pps, &st->last_pps)||
-      read_reg(daq, &turf_time.llast_pps, &st->llast_pps)||
-      read_reg(daq, &turf_time.last_dead, &st->last_dead)||
-      read_reg(daq, &turf_time.llast_dead, &st->llast_dead)||
-      read_reg(daq, &turf_time.panic_counter, &st->panic_count)||
-      read_reg(daq, &turf_event.count_reg, &counts.as_uint)||
-      read_reg(daq, &turf_trig.holdoff_reg, &holdoff.as_uint)||
-      read_reg(daq, &turf_trig.running, &running)||
-      read_reg(daq, &turf_event.event_in_reset, &in_reset)||
-      read_reg(daq, &turf_event.full_error, &st->full_err)
+      read_turf_reg(daq, &turf_event.ndwords0, &st->turfio_words_recv[0]) ||
+      read_turf_reg(daq, &turf_event.ndwords1, &st->turfio_words_recv[1]) ||
+      read_turf_reg(daq, &turf_event.ndwords2, &st->turfio_words_recv[2]) ||
+      read_turf_reg(daq, &turf_event.ndwords3, &st->turfio_words_recv[3]) ||
+      read_turf_reg(daq, &turf_event.outqwords, &st->qwords_sent) ||
+      read_turf_reg(daq, &turf_event.outevents, &st->events_sent) ||
+      read_turf_reg(daq, &turf_trig.trigger_count, &st->trigger_count)||
+      read_turf_reg(daq, &turf_trig.occupancy, &st->occupancy)||
+      read_turf_reg(daq, &turf_time.current_second, &st->current_second)||
+      read_turf_reg(daq, &turf_time.last_pps, &st->last_pps)||
+      read_turf_reg(daq, &turf_time.llast_pps, &st->llast_pps)||
+      read_turf_reg(daq, &turf_time.last_dead, &st->last_dead)||
+      read_turf_reg(daq, &turf_time.llast_dead, &st->llast_dead)||
+      read_turf_reg(daq, &turf_time.panic_counter, &st->panic_count)||
+      read_turf_reg(daq, &turf_event.count_reg, &counts.as_uint)||
+      read_turf_reg(daq, &turf_trig.holdoff_reg, &holdoff.as_uint)||
+      read_turf_reg(daq, &turf_trig.running, &running)||
+      read_turf_reg(daq, &turf_event.event_in_reset, &in_reset)||
+      read_turf_reg(daq, &turf_event.full_error, &st->full_err)
      )
   {
     return 1;
@@ -1514,7 +1545,7 @@ int pueo_daq_get_scalers(pueo_daq_t * daq, pueo_daq_scalers_t* s)
   int count = 0;
   while (reg.addr <= end.addr)
   {
-    if (read_reg(daq, &reg, &s->scalers.v[count++])) return 1;
+    if (read_turf_reg(daq, &reg, &s->scalers.v[count++])) return 1;
     reg.addr+=4;
   }
 
@@ -1543,10 +1574,10 @@ int pueo_daq_pps_setup(pueo_daq_t *daq, bool enable, uint16_t offset)
 {
 
   //first disable the pps, in case it doesn't like being set when enabled
-  if (write_reg(daq, &turf_trig.pps_trig_enable, 0)) return 1;
-  if ( write_reg(daq, &turf_trig.pps_offset, offset)) return 1;
+  if (write_turf_reg(daq, &turf_trig.pps_trig_enable, 0)) return 1;
+  if ( write_turf_reg(daq, &turf_trig.pps_offset, offset)) return 1;
   if (enable)
-     if (write_reg(daq, &turf_trig.pps_trig_enable, 1)) return 1;
+     if (write_turf_reg(daq, &turf_trig.pps_trig_enable, 1)) return 1;
 
   return 0;
 }
