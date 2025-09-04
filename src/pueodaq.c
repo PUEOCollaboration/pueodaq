@@ -1303,7 +1303,7 @@ int pueo_daq_dump(pueo_daq_t * daq, FILE * stream, int flags)
   fprintf(stream, "turf_stats{\n" PUEODAQ_STATS_JSON_FORMAT"}\n", PUEODAQ_STATS_VALS(st));
 
   uint32_t pps_reg = 0;
-  read_reg(daq, &turf_trig.pps_reg, &pps_reg);
+  read_turf_reg(daq, &turf_trig.pps_reg, &pps_reg);
   fprintf(stream, " pps_reg = 0x%x\n", pps_reg);
 
   pueo_daq_scalers_t sc;
