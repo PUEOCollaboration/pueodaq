@@ -5,6 +5,8 @@
 #include <stdbool.h>
 
 
+#pragma GCC visibility push(hidden)
+
 typedef struct reg
 {
   uint32_t addr;  //address of this register
@@ -21,6 +23,21 @@ enum e_turf_constants
  RUNCMD_RESET =  2,
  RUNCMD_STOP =  3
 };
+
+typedef struct
+{
+  uint8_t slot : 3;
+  uint8_t link : 2;
+  uint8_t zero : 2;
+} surf_t;
+
+#define SURF(_link, _slot) ((surf_t) { .link = _link, .slot = _slot })
+
+
+//inferred from reading pueo-python code, please check these someone who knows what they're doing!
+#define TURF_BASE 0
+#define TURFIO_BASE(link) ((1<<27) + (1 <<25)*(link))
+#define SURF_BASE(link, slot) (  TURFIO_BASE(link) + 0x400000*((slot)+1))
 
 
 
@@ -151,12 +168,19 @@ DEF(panic_counter,  REG_RO(BASE,0x01c))
 REG_GROUP(turf_time, 0x1a000, TIME_REGS);
 
 
-//inferred from reading pueo-python code, please check these someone who knows what they're doing!
-#define TURF_BASE 0
-#define TURFIO_BASE(link) ((1<<27) + (1 <<25)*link)
-#define SURF_BASE(link, slot) (  TURFIO_BASE(link) + 0x400000*(slot+1))
+
+#define TURFIO_REGS(DEF,BASE) \
+DEF (turfioid,       REG_RO(BASE, 0)) \
+DEF (dateversion,    REG_RO(BASE, 0x4)) \
+DEF (dna,            REG_RO(BASE, 0x8)) \
+DEF (ctlstat,        REG_RO(BASE, 0xc))
+
+REG_GROUP(turfio, 0, TURFIO_REGS);
 
 #define SURF_REGS(DEF,BASE)  \
+DEF (surfid,          REG_RO(BASE, 0)) \
+DEF (dateversion,     REG_RO(BASE, 0x4)) \
+DEF (dna,             REG_RO(BASE, 0x8)) \
 DEF (reset_lol,       BF (BASE,0x0c,0,1)) \
 DEF (fp_led,          BF (BASE,0x0c,1,2)) \
 DEF (cal_use_rack,    BF (BASE,0x0c,3,1)) \
@@ -190,15 +214,7 @@ REG_GROUP(surfL1, 0x8000, SURFL1_REGS);
 
 
 
-typedef struct
-{
-  uint8_t slot : 3;
-  uint8_t link : 2;
-  uint8_t zero : 2;
-} surf_t;
 
-
-#pragma GCC visibility push(hidden)
 
 typedef struct pueo_daq pueo_daq_t;
 
@@ -233,7 +249,21 @@ read_surf_reg(pueo_daq_t * daq, surf_t surf, const reg_t * reg, uint32_t * val)
   return read_based_reg(daq,SURF_BASE(surf.link, surf.slot), reg, val);
 }
 
+inline int  __attribute__((nonnull))
+write_turfio_reg(pueo_daq_t * daq, uint8_t link , const reg_t * reg, uint32_t val)
+{
+  return write_based_reg(daq, TURFIO_BASE(link & 0x3), reg, val);
+}
 
+inline int __attribute__((nonnull))
+read_turfio_reg(pueo_daq_t * daq, uint8_t link, const reg_t * reg, uint32_t * val)
+{
+  return read_based_reg(daq,TURFIO_BASE(link & 0x3), reg, val);
+}
+
+
+uint64_t __attribute((nonnull))
+read_dna(pueo_daq_t * daq, uint32_t device_base, const reg_t * reg);
 
 #pragma GCC visibility pop
 

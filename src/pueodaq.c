@@ -47,6 +47,28 @@ struct fragment
 };
 
 
+typedef union datever
+{
+  struct
+  {
+    uint8_t rev;
+    uint8_t minor : 4;
+    uint8_t major : 4;
+    uint16_t day : 5;
+    uint16_t month : 4;
+    uint16_t year : 7;
+  } decoded;
+  uint32_t as_uint;
+} datever_t;
+
+static int datever_dump(FILE * f, datever_t d)
+{
+  return fprintf(f,"v%02u.%02u.%02u %02u/%02u/2%03u",
+      d.decoded.major, d.decoded.minor, d.decoded.rev,
+      d.decoded.month, d.decoded.day, d.decoded.year);
+}
+
+
 static uint64_t pack_time(struct timespec ts)
 {
   //truncate to 34 bits
@@ -131,12 +153,17 @@ struct pueo_daq
   struct
   {
     uint32_t turfid;
-    uint32_t turf_datever;
+    datever_t turf_datever;
+    uint64_t turf_dna;
     struct
     {
       uint32_t turfioid;
+      uint64_t turfio_dna;
+      datever_t turfio_datever;
       uint32_t surfid[7];
-    } turfio;
+      uint64_t surf_dna[7];
+      datever_t surf_datever[7];
+    } turfio[4];
   } census;
 
 
@@ -1001,15 +1028,55 @@ int pueo_daq_reset(pueo_daq_t * daq)
 
   // reset tags on TURFS
   read_turf_reg(daq,&turf.turfid,&daq->census.turfid);
-  printf("TURFID: %0x\n", daq->census.turfid);
 
   //read date version
-  read_turf_reg(daq,&turf.dateversion,&daq->census.turf_datever);
-  printf("DATEVER: %0x\n", daq->census.turf_datever);
+  read_turf_reg(daq,&turf.dateversion,&daq->census.turf_datever.as_uint);
 
-  //TODO take a census of who we have
+  daq->census.turf_dna = read_dna(daq, TURF_BASE, &turf.dna);
 
+  if (daq->cfg.debug > 1)
+  {
+    printf("TURFID: 0x%x\n", daq->census.turfid);
+    printf("TURF DATEVER: ");
+    datever_dump(stdout, daq->census.turf_datever);
+    printf("\n");
+    printf("TURF DNA: %lu\n", daq->census.turf_dna);
+  }
 
+  //Take a census of who we have
+
+  for (int itfio = 0; itfio < 4; itfio++)
+  {
+    read_turfio_reg(daq, itfio, &turfio.turfioid, &daq->census.turfio[itfio].turfioid);
+    read_turfio_reg(daq, itfio, &turfio.dateversion, &daq->census.turfio[itfio].turfio_datever.as_uint);
+    daq->census.turfio[itfio].turfio_dna = read_dna(daq, TURFIO_BASE(itfio), &turfio.dna);
+
+    if (daq->cfg.debug > 1)
+    {
+      printf("TURFIO%d ID: 0x%x\n", itfio, daq->census.turfid);
+      printf("TURFIO%d  DATEVER: ", itfio);
+      datever_dump(stdout, daq->census.turfio[itfio].turfio_datever);
+      printf("\n");
+      printf("TURFIO%d DNA: %lu\n", itfio, daq->census.turfio[itfio].turfio_dna);
+    }
+
+    for (int isurf = 0; isurf < 7; isurf++)
+    {
+
+      read_surf_reg(daq,SURF(itfio, isurf), &surf.surfid, &daq->census.turfio[itfio].surfid[isurf]);
+      read_surf_reg(daq,SURF(itfio, isurf), &surf.dateversion, &daq->census.turfio[itfio].surf_datever[isurf].as_uint);
+      daq->census.turfio[itfio].surf_dna[isurf] = read_dna(daq, SURF_BASE(itfio, isurf), &surf.dna);
+
+      if (daq->cfg.debug > 1)
+      {
+        printf("TURFIO%d-SURF%d ID: 0x%x\n", itfio, isurf, daq->census.turfio[itfio].surfid[isurf]);
+        printf("TURFIO%d-SURF%d  DATEVER: ", itfio, isurf);
+        datever_dump(stdout, daq->census.turfio[itfio].surf_datever[isurf]);
+        printf("\n");
+        printf("TURFIO%d-SURF%d  DNA: %lu\n", itfio, isurf, daq->census.turfio[itfio].surf_dna[isurf]);
+      }
+    }
+  }
 
   // close the event interface
   pueo_daq_stop(daq);

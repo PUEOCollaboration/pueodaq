@@ -33,3 +33,25 @@ int write_based_reg(pueo_daq_t * daq, uint32_t base, const reg_t * reg, uint32_t
   return pueo_daq_write(daq, base+reg->addr, val);
 }
 
+
+uint64_t read_dna(pueo_daq_t * daq, uint32_t device, const reg_t * reg)
+{
+  uint64_t dna = 0;
+  if (write_based_reg(daq, device, reg, 0x80000000))
+  {
+    return (uint64_t) (-1);
+  }
+
+  for (int i = 0; i < 57; i++)
+  {
+    uint32_t val = 0;
+    if (read_based_reg(daq,device,reg, &val))
+    {
+      return (uint64_t) (-1);
+    }
+    dna  = (dna << 1 ) & (val &1);
+  }
+
+  return dna;
+}
+
