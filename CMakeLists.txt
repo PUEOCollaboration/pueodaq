@@ -13,9 +13,9 @@ find_package(Threads REQUIRED)
 ## defines
 
 include_directories(src) 
-set(LIBSRC src/pueodaq.c src/pueodaq-net.c src/pueodaq-util.c src/pueodaq-cfg.c)
+set(LIBSRC src/pueodaq.c src/pueodaq-net.c src/pueodaq-util.c src/pueodaq-cfg.c src/daqregs.c)
 set(PUEODAQ_PUBLIC_HEADERS src/pueodaq.h) 
-set(PUEODAQ_PRIVATE_HEADERS src/pueodaq-test.h src/pueodaq-net.h src/pueodaq-util.h) 
+set(PUEODAQ_PRIVATE_HEADERS src/pueodaq-test.h src/pueodaq-net.h src/pueodaq-util.h src/daqregs.h) 
 set(WARNFLAGS -Wall -Wextra -Wno-missing-braces -Wno-override-init) 
 
 

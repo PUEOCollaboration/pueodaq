@@ -46,71 +46,6 @@ struct fragment
   int16_t buf[];
 };
 
-typedef struct
-{
-  uint8_t slot : 3;
-  uint8_t link : 2;
-  uint8_t zero : 2;
-} surf_t;
-
-
-static int __attribute__((nonnull))
-read_based_reg(pueo_daq_t * daq, uint32_t base, const reg_t * reg, uint32_t * val)
-{
-
-  int r = pueo_daq_read(daq, reg->addr+base, val);
-  (*val) &=reg->mask;
-  (*val)>>=reg->offs;
-  return r;
-}
-
-
-static int  __attribute__((nonnull))
-write_based_reg(pueo_daq_t * daq, uint32_t base, const reg_t * reg, uint32_t val)
-{
-  assert (!reg->ro);
-  val <<= reg->offs;
-  val &= reg->mask;
-
-  // we have to load the old value in this case
-  if (reg->len!=32)
-  {
-    uint32_t current = 0;
-    if (read_based_reg(daq, base, reg, &current))
-    {
-      fprintf(stderr,"Could not read reg for partial write\n");
-      return -1;
-    }
-    val |= current & (~reg->mask);
-  }
-
-  return pueo_daq_write(daq, base+reg->addr, val);
-}
-
-static int  __attribute__((nonnull))
-write_turf_reg(pueo_daq_t * daq, const reg_t * reg, uint32_t val)
-{
-  return write_based_reg(daq, TURF_BASE, reg, val);
-}
-
-static int __attribute__((nonnull))
-read_turf_reg(pueo_daq_t * daq, const reg_t * reg, uint32_t * val)
-{
-  return read_based_reg(daq,TURF_BASE, reg, val);
-}
-
-static int  __attribute__((nonnull))
-write_surf_reg(pueo_daq_t * daq, surf_t surf, const reg_t * reg, uint32_t val)
-{
-  return write_based_reg(daq, SURF_BASE(surf.link, surf.slot), reg, val);
-}
-
-static int __attribute__((nonnull))
-read_surf_reg(pueo_daq_t * daq, surf_t surf, const reg_t * reg, uint32_t * val)
-{
-  return read_based_reg(daq,SURF_BASE(surf.link, surf.slot), reg, val);
-}
-
 
 static uint64_t pack_time(struct timespec ts)
 {
@@ -181,7 +116,7 @@ struct pueo_daq
 
     pthread_mutex_t tx_lock;
 
-    _Atomic uint32_t wr_tag; //  &0xf) 
+    _Atomic uint32_t wr_tag; //  &0xf
 
     _Atomic uint32_t rd_tag;  // & 0xf
 

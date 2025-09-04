@@ -16,11 +16,11 @@ typedef struct reg
   const char * name;
 } reg_t;
 
-enum
+enum e_turf_constants
 {
  RUNCMD_RESET =  2,
  RUNCMD_STOP =  3
-} e_turf_constants;
+};
 
 
 
@@ -187,6 +187,55 @@ REG_GROUP(surf, 0x0, SURF_REGS);
 
 
 REG_GROUP(surfL1, 0x8000, SURFL1_REGS);
+
+
+
+typedef struct
+{
+  uint8_t slot : 3;
+  uint8_t link : 2;
+  uint8_t zero : 2;
+} surf_t;
+
+
+#pragma GCC visibility push(hidden)
+
+typedef struct pueo_daq pueo_daq_t;
+
+int __attribute__((nonnull))
+read_based_reg(pueo_daq_t * daq, uint32_t base, const reg_t * reg, uint32_t * val);
+
+int __attribute__((nonnull))
+write_based_reg(pueo_daq_t * daq, uint32_t base, const reg_t * reg, uint32_t val);
+
+inline int __attribute__((nonnull))
+write_turf_reg(pueo_daq_t * daq, const reg_t * reg, uint32_t val)
+{
+  return write_based_reg(daq, TURF_BASE, reg, val);
+}
+
+
+inline int __attribute__((nonnull))
+read_turf_reg(pueo_daq_t * daq, const reg_t * reg, uint32_t * val)
+{
+  return read_based_reg(daq, TURF_BASE, reg, val);
+}
+
+inline int  __attribute__((nonnull))
+write_surf_reg(pueo_daq_t * daq, surf_t surf, const reg_t * reg, uint32_t val)
+{
+  return write_based_reg(daq, SURF_BASE(surf.link, surf.slot), reg, val);
+}
+
+inline int __attribute__((nonnull))
+read_surf_reg(pueo_daq_t * daq, surf_t surf, const reg_t * reg, uint32_t * val)
+{
+  return read_based_reg(daq,SURF_BASE(surf.link, surf.slot), reg, val);
+}
+
+
+
+#pragma GCC visibility pop
 
 //undef some names that might clash
 #undef REG
