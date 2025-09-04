@@ -1302,6 +1302,9 @@ int pueo_daq_dump(pueo_daq_t * daq, FILE * stream, int flags)
 
   fprintf(stream, "turf_stats{\n" PUEODAQ_STATS_JSON_FORMAT"}\n", PUEODAQ_STATS_VALS(st));
 
+  uint32_t pps_reg = 0;
+  read_reg(daq, &turf_trig.pps_reg, &pps_reg);
+  fprintf(stream, " pps_reg = 0x%x\n", pps_reg);
 
   pueo_daq_scalers_t sc;
   pueo_daq_get_scalers(daq, &sc);
@@ -1575,11 +1578,17 @@ int pueo_daq_scalers_dump(FILE *f, const pueo_daq_scalers_t * s)
 int pueo_daq_pps_setup(pueo_daq_t *daq, bool enable, uint16_t offset)
 {
 
-  //first disable the pps, in case it doesn't like being set when enabled
-  if (write_turf_reg(daq, &turf_trig.pps_trig_enable, 0)) return 1;
-  if ( write_turf_reg(daq, &turf_trig.pps_offset, offset)) return 1;
+  if (write_turf_reg(daq, &turf_trig.pps_reg, 0)) return 1;
+  //set the oofset
+  uint32_t reg = offset;
+  reg<<=16;
+  if (write_turf_reg(daq, &turf_trig.pps_reg, reg )) return 1;
   if (enable)
-     if (write_turf_reg(daq, &turf_trig.pps_trig_enable, 1)) return 1;
+  {
+    usleep(10);
+    reg|=1;
+    if (write_turf_reg(daq, &turf_trig.pps_reg, reg)) return 1;
+  }
 
   return 0;
 }
