@@ -225,7 +225,6 @@ REG_GROUP(surf, 0x0, SURF_REGS);
   DEF( agc_loop_reset,              BF (BASE,0x2004,1,1)) \
   DEF( trigger_generator_reset,     BF (BASE,0x2004,8,1)) \
   DEF( lower_beam_mask,             REG(BASE,0x2008))\
-  DEF( lower_beam_mask,             REG(BASE,0x200c))\
   DEF( upper_beam_mask,             REG(BASE,0x200c))
 
 
