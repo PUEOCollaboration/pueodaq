@@ -218,9 +218,9 @@ REG_GROUP(surf, 0x0, SURF_REGS);
   DEF( threshold_base,              REG(BASE,0x800))\
   DEF( subthreshold_base,           REG(BASE,0xA00))\
   DEF( threshold_reset,             BF (BASE,0x1800,0,1)) \
-  DEF( update_request,              BF (BASE,0x1800,1,1)) \
-  DEF( threshold_reset,             BF (BASE,0x1804,0,1)) \
-  DEF( update_request,              BF (BASE,0x1804,1,1)) \
+  DEF( threshold_update_request,    BF (BASE,0x1800,1,1)) \
+  DEF( scaler_reset,                BF (BASE,0x1804,0,1)) \
+  DEF( current_scaler_bank,         BF (BASE,0x1804,1,1)) \
   DEF( scaler_time_adjust,          REG(BASE,0x1808))\
   DEF( agc_loop_reset,              BF (BASE,0x2004,1,1)) \
   DEF( trigger_generator_reset,     BF (BASE,0x2004,8,1)) \
