@@ -28,7 +28,7 @@ typedef struct
 {
   uint8_t slot : 3;
   uint8_t link : 2;
-  uint8_t zero : 2;
+  uint8_t zero : 3;
 } surf_t;
 
 #define SURF(_link, _slot) ((surf_t) { .link = _link, .slot = _slot })
@@ -202,8 +202,8 @@ DEF (adc_sigdet,   BF_RO (BASE,0x18,16,8)) \
 REG_GROUP(surf, 0x0, SURF_REGS);
 
 /*
-0x0400 - 0x07FF : Scalers (one address per beam, bottom 16 bits are trigger, top 16 bits are subthreshold)
-0x0800 - 0x09FF: Trigger thresholds
+0x0400 - 0x07FF : Scalers (one address per beam, bottom 16 bits are trigger, top 16 bits are pseudo)
+0x0800 - 0x09FF: Trigger threshod
 0x0A00 - 0x0FFF: Subthresholds
 0x1800: Threshold control. Bit[0] = update reset, Bit[1] = request update (cleared when complete). Write 2 to this value to update thresholds.
 0x1804: Scaler control. Bit[0] = reset scaler system, Bit[1] = current scaler bank (toggles when a scaler count period has completed)
@@ -216,7 +216,7 @@ REG_GROUP(surf, 0x0, SURF_REGS);
   DEF( threshold_adj_delta,         REG_RO(BASE,0x000))\
   DEF( scaler_base,                 REG_RO(BASE,0x400))\
   DEF( threshold_base,              REG(BASE,0x800))\
-  DEF( subthreshold_base,           REG(BASE,0xA00))\
+  DEF( pseudothreshold_base,        REG(BASE,0xA00))\
   DEF( threshold_reset,             BF (BASE,0x1800,0,1)) \
   DEF( threshold_update_request,    BF (BASE,0x1800,1,1)) \
   DEF( scaler_reset,                BF (BASE,0x1804,0,1)) \
@@ -228,32 +228,35 @@ REG_GROUP(surf, 0x0, SURF_REGS);
   DEF( upper_beam_mask,             REG(BASE,0x200c))
 
 
-REG_GROUP(surfL1, 0x8000, SURFL1_REGS);
+REG_GROUP(surf_L1, 0x8000, SURFL1_REGS);
 
 // AGC
 // Channel index mask is 0x1C00 (bits [12:10])
 #define SURFAGC_REGS(DEF,BASE) \
-  DEF( done_bit,         BF_RO (BASE,0x4000, 0, 1))\
-  DEF( sq_accum,         REG_RO(BASE,0x4004))\
-  DEF( gt_accum,         REG_RO(BASE,0x4008))\
-  DEF( lt_accum,         REG_RO(BASE,0x400C))\
-  DEF( scale,            REG_RO(BASE,0x4010))\
-  DEF( offset,           REG_RO(BASE,0x4014))\
-  DEF( scale_delta,      REG_RO(BASE,0x4040))\
-  DEF( offset_delta,     REG_RO(BASE,0x4044))
+  DEF( done_bit,         BF_RO (BASE,0x00, 0, 1))\
+  DEF( sq_accum,         REG_RO(BASE,0x04))\
+  DEF( gt_accum,         REG_RO(BASE,0x08))\
+  DEF( lt_accum,         REG_RO(BASE,0x0C))\
+  DEF( scale,            REG_RO(BASE,0x10))\
+  DEF( offset,           REG_RO(BASE,0x14))\
+  DEF( scale_delta,      REG_RO(BASE,0x40))\
+  DEF( offset_delta,     REG_RO(BASE,0x44))
+
+REG_GROUP(surf_agc, 0x4000, SURFAGC_REGS);
 
 // Biquads
 // Channel index mask is 0x1C00 (bits [12:10])
 // Biquad (0/1) selection mask is 0x800 (bit [7])
 #define SURFBQ_REGS(DEF,BASE) \
-  DEF( update_control,   BF_RO (BASE,0x6000, 0, 1))\
-  DEF( zero_fir_casc,    REG (BASE,0x6004))\
-  DEF( pole_iir_casc,    REG (BASE,0x6008))\
-  DEF( inc_comp_casc,    REG (BASE,0x600C))\
-  DEF( pole_f_fir_casc,  REG (BASE,0x6010))\
-  DEF( pole_g_fir_casc,  REG (BASE,0x6014))\
-  DEF( g_in_f_fir,       REG (BASE,0x6018))\
-  DEF( g_in_f_fir,       REG (BASE,0x601C))
+  DEF( update_control,   BF_RO (BASE,0x00, 0, 1))\
+  DEF( zero_fir_casc,    REG (BASE,0x04))\
+  DEF( pole_iir_casc,    REG (BASE,0x08))\
+  DEF( inc_comp_casc,    REG (BASE,0x0C))\
+  DEF( pole_f_fir_casc,  REG (BASE,0x10))\
+  DEF( pole_g_fir_casc,  REG (BASE,0x14))\
+  DEF( g_in_f_fir,       REG (BASE,0x18))
+
+REG_GROUP(surf_bq, 0x6000, SURFBQ_REGS);
 
 
 typedef struct pueo_daq pueo_daq_t;

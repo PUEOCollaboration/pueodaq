@@ -145,7 +145,7 @@ typedef int (*pueo_daq_event_ready_callback_t)(pueo_daq_t * daq, uint32_t idx);
     .fragcontrol_in =0x5266,                \
     .fragment_in = 0x5278,                  \
   },                                        \
-  .timeout = {.tv_sec = 0, .tv_nsec = 1e7 }, \
+  .timeout = {.tv_sec = 0, .tv_nsec = 1e8 }, \
   .max_attempts = 10, .debug = false, .turfio_mask = 0x0
 
 
@@ -304,4 +304,29 @@ int pueo_daq_pps_setup(pueo_daq_t *daq, bool enable, uint16_t offset);
 int pueo_daq_get_scalers(pueo_daq_t * daq, pueo_daq_scalers_t* s);
 int pueo_daq_scalers_dump(FILE *f, const pueo_daq_scalers_t * s);
 
+
+#define PUEO_L1_BEAMS 48
+typedef struct pueo_L1_stat
+{
+  struct
+  {
+    uint64_t threshold : 18;
+    uint64_t pseudothreshold : 18;
+    uint64_t scaler : 12;
+    uint64_t pseudoscaler : 12;
+    uint64_t in_beam_mask : 1;
+    uint64_t scaler_bank_before : 1;
+    uint64_t scaler_bank_after : 1;
+  } beams[PUEO_L1_BEAMS];
+
+  struct timespec readout_time_start;
+  uint16_t ms_elapsed;
+  uint8_t surf_link : 2;
+  uint8_t surf_slot : 3;
+  uint8_t flags;
+} pueo_L1_stat_t;
+
+int pueo_daq_L1_stat_dump(FILE *f, const pueo_L1_stat_t * s);
+
+int pueo_daq_read_L1_stat(pueo_daq_t * daq, int surf_link, int surf_slot, pueo_L1_stat_t * stat);
 
