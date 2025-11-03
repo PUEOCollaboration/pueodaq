@@ -40,6 +40,8 @@
 #define PUEODAQ_NSAMP 1024
 #define PUEODAQ_MAX_HEADER_SIZE 1024
 
+#define PUEODAQ_MAX_READMANY_SIZE 256
+
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -223,6 +225,20 @@ int pueo_daq_reset(pueo_daq_t * daq);
 // Right now these are also locking but that will probably change
 int pueo_daq_write(pueo_daq_t *daq, uint32_t wraddr, uint32_t data);
 int pueo_daq_read(pueo_daq_t *daq, uint32_t rdaddr, uint32_t * data);
+
+typedef struct pueo_daq_readmany_setup
+{
+  unsigned N; //number to read
+  unsigned in_stride; // 0 same as 1
+  unsigned out_stride; // 0 same as 1
+  const uint32_t * read_addr_v;
+  uint32_t read_addr_offset; // added to each address
+  const uint32_t * read_addr_offset_v;  // if not NULL wil lbe added individually to read addresses
+  uint32_t * data_v;
+
+} pueo_daq_readmany_setup_t;
+
+int pueo_daq_readmany(pueo_daq_t *daq,  const pueo_daq_readmany_setup_t * s);
 
 
 typedef struct pueo_daq_stats
