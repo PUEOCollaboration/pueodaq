@@ -1194,7 +1194,7 @@ int pueo_daq_readmany(pueo_daq_t *daq, const pueo_daq_readmany_setup_t * s)
 
   for (unsigned i = 0; i < s->N; i++)
   {
-    msgs[i].BIT.ADDR =  s->read_addr_v[in_stride*i];
+    msgs[i].BIT.ADDR =  s->read_addr_v ? s->read_addr_v[in_stride*i] : s->read_addr_base + s->read_addr_increment *i;
     msgs[i].BIT.ADDR += s->read_addr_offset + ( s->read_addr_offset_v ? s->read_addr_offset_v[i*in_stride] : 0);
     msgs[i].BIT.TAG = tag;
   }
@@ -1649,9 +1649,6 @@ int pueo_daq_read_L1_stat(pueo_daq_t * daq, int link, int slot, pueo_L1_stat_t *
   surf_t surf = SURF(link,slot);
   int r = 0;
   int i = 0;
-  reg_t threshold_reg = surf_L1.threshold_base;
-  reg_t pseudothreshold_reg = surf_L1.pseudothreshold_base;
-  reg_t scaler_reg = surf_L1.scaler_base;
   clock_gettime(CLOCK_REALTIME, &stat->readout_time_start);
   stat->surf_link = link;
   stat->surf_slot = slot;
@@ -1668,30 +1665,29 @@ int pueo_daq_read_L1_stat(pueo_daq_t * daq, int link, int slot, pueo_L1_stat_t *
   complete_mask <<=18;
   complete_mask |= (lower_mask  & 0x3ffff);
 
+  static __thread uint32_t thresholds[PUEO_L1_BEAMS]; 
+  static __thread uint32_t pseudo_thresholds[PUEO_L1_BEAMS]; 
+  static __thread uint16_t scalers[PUEO_L1_BEAMS][2]; 
+
+  uint32_t scaler_bank[2];
+
+  if (read_incrementing_regs(daq, SURF_BASE(surf.link, surf.slot), PUEO_L1_BEAMS,  &surf_L1.threshold_base, thresholds)) { r = 1; goto do_end;}
+  if (read_incrementing_regs(daq, SURF_BASE(surf.link, surf.slot), PUEO_L1_BEAMS,  &surf_L1.pseudothreshold_base, pseudo_thresholds)) { r = 1; goto do_end;}
+  if (read_surf_reg(daq, surf, &surf_L1.current_scaler_bank, &scaler_bank[0])) { r = 1; goto do_end; }
+  if (read_incrementing_regs(daq, SURF_BASE(surf.link, surf.slot), PUEO_L1_BEAMS,  &surf_L1.scaler_base, (uint32_t*) scalers)) { r = 1; goto do_end;}
+  if (read_surf_reg(daq, surf, &surf_L1.current_scaler_bank, &scaler_bank[1])) { r = 1; goto do_end; }
+
+
   for (i = 0; i < PUEO_L1_BEAMS; i++)
   {
 
-    uint32_t thresh = 0;
-    uint32_t pseudo_thresh = 0;
-    uint16_t scalers[2] = {0};
-    uint32_t scaler_bank[2];
-    if (read_surf_reg(daq, surf, &threshold_reg, &thresh)) { r = 1+i; goto do_end; }
-    if (read_surf_reg(daq, surf, &pseudothreshold_reg, &pseudo_thresh)) { r = 1+i; goto do_end; }
-    if (read_surf_reg(daq, surf, &surf_L1.current_scaler_bank, &scaler_bank[0])) { r = 1+i; goto do_end; }
-    if (read_surf_reg(daq, surf, &scaler_reg, (uint32_t*) scalers)) { r = 1+i; goto do_end; }
-    if (read_surf_reg(daq, surf, &surf_L1.current_scaler_bank, &scaler_bank[1])) { r = 1+i; goto do_end; }
-
-    stat->beams[i].threshold = thresh;
-    stat->beams[i].pseudothreshold = pseudo_thresh;
-    stat->beams[i].scaler = scalers[0];
-    stat->beams[i].pseudoscaler = scalers[1];
+    stat->beams[i].threshold = thresholds[i];
+    stat->beams[i].pseudothreshold = pseudo_thresholds[i];
+    stat->beams[i].scaler = scalers[i][0];
+    stat->beams[i].pseudoscaler = scalers[i][1];
     stat->beams[i].scaler_bank_before = scaler_bank[0];
     stat->beams[i].scaler_bank_after = scaler_bank[1];
     stat->beams[i].in_beam_mask = !! ( complete_mask & (1ull << i));
-
-    threshold_reg.addr+=4;
-    pseudothreshold_reg.addr+=4;
-    scaler_reg.addr+=4;
   }
 
 do_end:

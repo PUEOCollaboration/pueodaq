@@ -231,8 +231,10 @@ typedef struct pueo_daq_readmany_setup
   unsigned N; //number to read
   unsigned in_stride; // 0 same as 1
   unsigned out_stride; // 0 same as 1
-  const uint32_t * read_addr_v;
+  const uint32_t * read_addr_v; // 
   uint32_t read_addr_offset; // added to each address
+  uint32_t read_addr_base;  // used if read_addr_v is NULL
+  uint32_t read_addr_increment;  // used if read_addr_v is NULL
   const uint32_t * read_addr_offset_v;  // if not NULL wil lbe added individually to read addresses
   uint32_t * data_v;
 
