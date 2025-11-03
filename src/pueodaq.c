@@ -520,7 +520,8 @@ void event_buf_idx_mark_free(pueo_daq_t * daq, uint32_t idx)
    uint32_t w = idx / 64;
    uint32_t b = idx % 64;
 
-   atomic_fetch_and(&daq->event_bufs_inuse_bitmap[w], ~(1ull << b));
+   uint32_t was = atomic_fetch_and(&daq->event_bufs_inuse_bitmap[w], ~(1ull << b));
+   assert((was & (1ull<<b)) == 1); //make sure we aren't done twice
 }
 
 void event_buf_mark_free(pueo_daq_t * daq, struct event_buf * buf)
@@ -534,7 +535,8 @@ void event_buf_mark_ready(pueo_daq_t * daq, struct event_buf * buf)
    uint32_t idx = (((char*) buf) - ((char*) daq->event_bufs)) / daq->evbuf_sz;
    uint32_t w = idx / 64;
    uint32_t b = idx % 64;
-   atomic_fetch_or(&daq->event_bufs_ready_bitmap[w], (1ull << b));
+   uint32_t was = atomic_fetch_or(&daq->event_bufs_ready_bitmap[w], (1ull << b));
+   assert((was & (1ull<<b)) == 0); //make sure we aren't done twice
 }
 
 
@@ -1542,6 +1544,7 @@ int pueo_daq_get_stats(pueo_daq_t * daq, pueo_daq_stats_t * st)
   uint32_t in_reset;
   uint32_t running;
   event_count_reg_t counts;
+  uint32_t pps_reg = 0;
   holdoff_reg_t holdoff;
   if (
       read_turf_reg(daq, &turf_event.ndwords0, &st->turfio_words_recv[0]) ||
@@ -1562,11 +1565,17 @@ int pueo_daq_get_stats(pueo_daq_t * daq, pueo_daq_stats_t * st)
       read_turf_reg(daq, &turf_trig.holdoff_reg, &holdoff.as_uint)||
       read_turf_reg(daq, &turf_trig.running, &running)||
       read_turf_reg(daq, &turf_event.event_in_reset, &in_reset)||
-      read_turf_reg(daq, &turf_event.full_error, &st->full_err)
+      read_turf_reg(daq, &turf_event.full_error0, &st->full_err[0])||
+      read_turf_reg(daq, &turf_event.full_error1, &st->full_err[1])||
+      read_turf_reg(daq, &turf_event.full_error2, &st->full_err[2])||
+      read_turf_reg(daq, &turf_trig.pps_reg, &pps_reg)
      )
   {
     return 1;
   }
+
+  st->pps_trig_enabled = pps_reg &1;
+  st->pps_trig_offset = pps_reg >> 16;
 
   st->ack_count = counts.as_count.ack_count;
   st->allow_count = counts.as_count.allow_count;

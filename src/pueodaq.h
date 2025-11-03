@@ -257,13 +257,16 @@ typedef struct pueo_daq_stats
   uint32_t panic_count;
   uint32_t occupancy;
   uint16_t ack_count;
-  uint32_t full_err;
+  uint32_t full_err[3];
+  uint32_t completion_count;
   uint16_t allow_count;
   uint16_t holdoff;
+  uint16_t pps_trig_offset;
   bool running;
   bool in_reset;
   bool surf_err;
   bool turf_err;
+  bool pps_trig_enabled;
 } pueo_daq_stats_t;
 
 #define PUEODAQ_STATS_JSON_FORMAT_WITH_PREFIX(prefix)  prefix "\"turfio0_recv_bytes\": %llu,\n"\
@@ -274,22 +277,24 @@ typedef struct pueo_daq_stats
                                                        prefix "\"events_sent\": %u,\n"\
                                                        prefix "\"trig_count\": %u,\n"\
                                                        prefix "\"current_sec\": %u,\n"\
-                                                       prefix "\"pps, last_pps\": %u,%u\n"\
-                                                       prefix "\"dead, last_dead\": %u,%u\n"\
+                                                       prefix "\"pps\": %u, \"last_pps\": %u\n"\
+                                                       prefix "\"pps_trig_offset\": %u,\n"\
+                                                       prefix "\"dead\": %u, \"last_dead\": %u,\n"\
                                                        prefix "\"panic_count: \" %u\n"\
                                                        prefix "\"occupancy: \" %u\n"\
                                                        prefix "\"ack_count: \" %u\n"\
                                                        prefix "\"allow_count: \" %u\n"\
                                                        prefix "\"holdoff: \" %u\n"\
-                                                       prefix "\"running, in_reset\": %s,%s\n"\
-                                                       prefix "\"full_err:\": 0x%x\n"\
-                                                       prefix "\"turf_err, surf_err\": %s,%s\n"
+                                                       prefix "\"running\": %s, \"in_reset\": %s,\n"\
+                                                       prefix "\"full_err:\": [0x%x,0x%x,0x%x],\n"\
+                                                       prefix "\"turf_err\": %s, \"surf_err\": %s, \"pps_enabled\": %s\n"
 
 #define PUEODAQ_STATS_JSON_FORMAT PUEODAQ_STATS_JSON_FORMAT_WITH_PREFIX("  ")
 
 #define PUEODAQ_STATS_VALS(s)  4ull*s.turfio_words_recv[0], 4ull*s.turfio_words_recv[1], 4ull*s.turfio_words_recv[2], 4ull*s.turfio_words_recv[3],\
-       	8ull*s.qwords_sent, s.events_sent, s.trigger_count, s.current_second, s.last_pps, s.llast_pps, s.last_dead, s.llast_dead, \
-	s.panic_count, s.occupancy, s.ack_count, s.allow_count, s.holdoff, s.running ? "yes" : "no" , s.in_reset ? "yes" : "no", s.full_err, s.turf_err ? "yes" : "no", s.surf_err ? "yes" : "no"
+       	8ull*s.qwords_sent, s.events_sent, s.trigger_count, s.current_second, s.last_pps, s.llast_pps, s.pps_trig_offset, s.last_dead, s.llast_dead, \
+	s.panic_count, s.occupancy, s.ack_count, s.allow_count, s.holdoff, s.running ? "true" : "false" , s.in_reset ? "true" : "false", s.full_err[0], s.full_err[1], s.full_err[2],\
+  s.turf_err ? "true" : "false", s.surf_err ? "true" : "false", s.pps_trig_enabled ? "true" : "false"
 
 
 int pueo_daq_get_stats(pueo_daq_t * daq,  pueo_daq_stats_t * stats);

@@ -94,7 +94,10 @@ DEF(outevents,      REG_RO(BASE, 0x024))\
 DEF(count_reg,       REG_RO(BASE, 0x028))\
 DEF(ack_count,       BF(BASE, 0x028, 0, 12))\
 DEF(allow_count,     BF(BASE, 0x028, 16, 9))\
-DEF(full_error,      REG_RO(BASE, 0x2c))
+DEF(full_error0,     REG_RO(BASE, 0x2c))\
+DEF(full_error1,     REG_RO(BASE, 0x30))\
+DEF(full_error2,     REG_RO(BASE, 0x34))\
+DEF(completion_count,  REG_RO(BASE, 0x38))
 
 
 REG_GROUP(turf_event, 0x18000, EVENT_REGS);
