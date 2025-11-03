@@ -265,6 +265,14 @@ int __attribute__((nonnull))
 read_based_reg(pueo_daq_t * daq, uint32_t base, const reg_t * reg, uint32_t * val);
 
 int __attribute__((nonnull))
+read_based_regs(pueo_daq_t * daq, uint8_t N, uint32_t base, const reg_t ** reg, uint32_t * val);
+
+int __attribute__((nonnull))
+read_incrementing_regs(pueo_daq_t * daq, uint8_t N, uint32_t base, const reg_t * base_reg, uint32_t * val);
+
+
+
+int __attribute__((nonnull))
 write_based_reg(pueo_daq_t * daq, uint32_t base, const reg_t * reg, uint32_t val);
 
 inline int __attribute__((nonnull))
