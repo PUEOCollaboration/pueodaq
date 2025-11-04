@@ -24,6 +24,18 @@
 #include "pueodaq.h"
 #include "pueodaq-net.h"
 
+typedef union fpga_id
+{
+  char c[4];
+  uint32_t u;
+} fpga_id_t;
+
+
+const fpga_id_t the_turfid = { .c = {'T','U','R','F'} };
+const fpga_id_t the_surfid = { .c = {'S','U','R','F'} };
+const fpga_id_t the_tfioid = { .c = {'T','F','I','O'} };
+
+
 
 typedef enum
 {
@@ -157,13 +169,15 @@ struct pueo_daq
     uint64_t turf_dna;
     struct
     {
+
+
       uint32_t turfioid;
       uint64_t turfio_dna;
       datever_t turfio_datever;
-      uint32_t surfid[7];
-      uint64_t surf_dna[7];
-      datever_t surf_datever[7];
-    } turfio[4];
+      uint32_t surfid[NSURFSLOTS];
+      uint64_t surf_dna[NSURFSLOTS];
+      datever_t surf_datever[NSURFSLOTS];
+    } turfio[NTFIO];
   } census;
 
 
@@ -1031,6 +1045,11 @@ int pueo_daq_reset(pueo_daq_t * daq)
   // reset tags on TURFS
   read_turf_reg(daq,&turf.turfid,&daq->census.turfid);
 
+  if (daq->census.turfid != the_turfid.u)
+  {
+    fprintf(stderr,"TURF does not present as a TURF...this will probably end poorly\n");
+  }
+
   //read date version
   read_turf_reg(daq,&turf.dateversion,&daq->census.turf_datever.as_uint);
 
@@ -1038,7 +1057,8 @@ int pueo_daq_reset(pueo_daq_t * daq)
 
   if (daq->cfg.debug > 1)
   {
-    printf("TURFID: 0x%x\n", daq->census.turfid);
+    fpga_id_t id = { .u = daq->census.turfid };
+    printf("TURFID: %4sx\n", id.c);
     printf("TURF DATEVER: ");
     datever_dump(stdout, daq->census.turf_datever);
     printf("\n");
@@ -1047,35 +1067,61 @@ int pueo_daq_reset(pueo_daq_t * daq)
 
   //Take a census of who we have
 
-  for (int itfio = 0; itfio < 4; itfio++)
+  for (int itfio = 0; itfio < NTFIO; itfio++)
   {
     read_turfio_reg(daq, itfio, &turfio.turfioid, &daq->census.turfio[itfio].turfioid);
-    read_turfio_reg(daq, itfio, &turfio.dateversion, &daq->census.turfio[itfio].turfio_datever.as_uint);
-    daq->census.turfio[itfio].turfio_dna = read_dna(daq, TURFIO_BASE(itfio), &turfio.dna);
-
-    if (daq->cfg.debug > 1)
+    if (daq->census.turfio[itfio].turfioid !=  the_tfioid.u)  
     {
-      printf("TURFIO%d ID: 0x%x\n", itfio, daq->census.turfid);
-      printf("TURFIO%d  DATEVER: ", itfio);
-      datever_dump(stdout, daq->census.turfio[itfio].turfio_datever);
-      printf("\n");
-      printf("TURFIO%d DNA: %lu\n", itfio, daq->census.turfio[itfio].turfio_dna);
+      if (daq->cfg.debug)
+      {
+        printf("TFIO%d not correct id, assuming mising\n", itfio); 
+      }
+      daq->census.turfio[itfio].turfioid = 0;
     }
 
-    for (int isurf = 0; isurf < 7; isurf++)
+    else
     {
-
-      read_surf_reg(daq,SURF(itfio, isurf), &surf.surfid, &daq->census.turfio[itfio].surfid[isurf]);
-      read_surf_reg(daq,SURF(itfio, isurf), &surf.dateversion, &daq->census.turfio[itfio].surf_datever[isurf].as_uint);
-      daq->census.turfio[itfio].surf_dna[isurf] = read_dna(daq, SURF_BASE(itfio, isurf), &surf.dna);
+      read_turfio_reg(daq, itfio, &turfio.dateversion, &daq->census.turfio[itfio].turfio_datever.as_uint);
+      daq->census.turfio[itfio].turfio_dna = read_dna(daq, TURFIO_BASE(itfio), &turfio.dna);
 
       if (daq->cfg.debug > 1)
       {
-        printf("TURFIO%d-SURF%d ID: 0x%x\n", itfio, isurf, daq->census.turfio[itfio].surfid[isurf]);
-        printf("TURFIO%d-SURF%d  DATEVER: ", itfio, isurf);
-        datever_dump(stdout, daq->census.turfio[itfio].surf_datever[isurf]);
+
+        fpga_id_t id = { .u = daq->census.turfio[itfio].turfioid };
+        printf("TURFIO%d ID: %4s\n", itfio, id.c);
+        printf("TURFIO%d  DATEVER: ", itfio);
+        datever_dump(stdout, daq->census.turfio[itfio].turfio_datever);
         printf("\n");
-        printf("TURFIO%d-SURF%d  DNA: %lu\n", itfio, isurf, daq->census.turfio[itfio].surf_dna[isurf]);
+        printf("TURFIO%d DNA: %lu\n", itfio, daq->census.turfio[itfio].turfio_dna);
+      }
+
+      for (int isurf = 0; isurf < NSURFSLOTS; isurf++)
+      {
+
+        read_surf_reg(daq,SURF(itfio, isurf), &surf.surfid, &daq->census.turfio[itfio].surfid[isurf]);
+        if (daq->census.turfio[itfio].surfid[isurf]  !=  the_surfid.u)  
+        {
+          if (daq->cfg.debug)
+          {
+            printf("TFIO%d-SURF%d not correct id, assuming mising\n", itfio, isurf); 
+          }
+          daq->census.turfio[itfio].surfid[isurf] = 0;
+        }
+        else
+        {
+          read_surf_reg(daq,SURF(itfio, isurf), &surf.dateversion, &daq->census.turfio[itfio].surf_datever[isurf].as_uint);
+          daq->census.turfio[itfio].surf_dna[isurf] = read_dna(daq, SURF_BASE(itfio, isurf), &surf.dna);
+
+          if (daq->cfg.debug > 1)
+          {
+            fpga_id_t id = { .u = daq->census.turfio[itfio].surfid[isurf] } ;
+            printf("TURFIO%d-SURF%d ID: %4s\n", itfio, isurf, id.c);
+            printf("TURFIO%d-SURF%d  DATEVER: ", itfio, isurf);
+            datever_dump(stdout, daq->census.turfio[itfio].surf_datever[isurf]);
+            printf("\n");
+            printf("TURFIO%d-SURF%d  DNA: %lu\n", itfio, isurf, daq->census.turfio[itfio].surf_dna[isurf]);
+          }
+        }
       }
     }
   }
@@ -1143,7 +1189,6 @@ void pueo_daq_destroy(pueo_daq_t * daq)
   {
     fprintf(stderr,"Trouble closing\n");
   }
-
 
 
 
@@ -1342,10 +1387,12 @@ int pueo_daq_dump(pueo_daq_t * daq, FILE * stream, int flags)
   pueo_daq_get_scalers(daq, &sc);
   pueo_daq_scalers_dump(stream, &sc);
 
-  for (int turfio = 0; turfio < 4 ; turfio++)
+  for (int turfio = 0; turfio < NTFIO ; turfio++)
   {
-    for (int slot = 0; slot < 8; slot++)
+    if (!daq->census.turfio[turfio].turfioid) continue;
+    for (int slot = 0; slot < NSURFSLOTS ; slot++)
     {
+      if (!daq->census.turfio[turfio].surfid[slot]) continue;
       pueo_L1_stat_t l1;
       if (!pueo_daq_read_L1_stat(daq, turfio, slot, &l1))
         pueo_daq_L1_stat_dump(stream, &l1);
@@ -1644,7 +1691,7 @@ int pueo_daq_pps_setup(pueo_daq_t *daq, bool enable, uint16_t offset)
 int pueo_daq_L1_stat_dump(FILE *f, const pueo_L1_stat_t * s)
 {
    int ret = 0;
-   ret+= fprintf(f,"L1 stat dump for SURF Link %u, slot %u @%lu.%09ld (dur %hu ms):\n" , s->surf_slot, s->surf_link, s->readout_time_start.tv_sec, s->readout_time_start.tv_nsec, s->ms_elapsed);
+   ret+= fprintf(f,"L1 stat dump for SURF Link %u, slot %u @%lu.%09ld (dur %hu ms):\n" , s->surf_link, s->surf_slot, s->readout_time_start.tv_sec, s->readout_time_start.tv_nsec, s->ms_elapsed);
    ret+= printf("==BM=====THRESHOLD/PSEUDOTHRESHOLD====== SCALER/PSEUDOSCALER====INMASK==BANK\n");
    for (int i = 0; i < PUEO_L1_BEAMS; i++)
    {

@@ -7,6 +7,11 @@
 
 #pragma GCC visibility push(hidden)
 
+
+
+
+
+
 typedef struct reg
 {
   uint32_t addr;  //address of this register
@@ -39,6 +44,9 @@ typedef struct
 #define TURF_BASE 0
 #define TURFIO_BASE(link) ((1<<27) + (1 <<25)*(link))
 #define SURF_BASE(link, slot) (  TURFIO_BASE(link) + 0x400000*((slot)+1))
+
+#define NTFIO 4
+#define NSURFSLOTS 7
 
 
 
