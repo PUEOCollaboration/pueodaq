@@ -526,7 +526,7 @@ uint16_t event_buf_find_ready(pueo_daq_t * daq)
 
       uint64_t update =  was & ~(1ull << first_marked_bit);
       //we're in a loop anyway so we can use weak here
-      if (atomic_compare_exchange_weak(&daq->event_bufs_inuse_bitmap[word],&was,update))
+      if (atomic_compare_exchange_weak(&daq->event_bufs_ready_bitmap[word],&was,update))
       {
         atomic_store(&daq->last_sent_evbuf, word * 64 +first_marked_bit);
         return word * 64 + first_marked_bit;
