@@ -68,7 +68,7 @@ static const struct {\
 #define TURF_REGS(DEF, BASE) \
 DEF(turfid,         REG_RO(BASE,0))\
 DEF(dateversion,    REG_RO(BASE,4))\
-DEF(dna,            REG_RO(BASE,8))\
+DEF(dna,            REG(BASE,8))\
 DEF(sysclkmon,      REG_RO(BASE, 0x800))\
 DEF(gbeclkmon,      REG_RO(BASE, 0x804))\
 DEF(ddr0clkmon,     REG_RO(BASE, 0x808))\
@@ -176,7 +176,7 @@ REG_GROUP(turf_time, 0x1a000, TIME_REGS);
 #define TURFIO_REGS(DEF,BASE) \
 DEF (turfioid,       REG_RO(BASE, 0)) \
 DEF (dateversion,    REG_RO(BASE, 0x4)) \
-DEF (dna,            REG_RO(BASE, 0x8)) \
+DEF (dna,            REG(BASE, 0x8)) \
 DEF (ctlstat,        REG_RO(BASE, 0xc))
 
 REG_GROUP(turfio, 0, TURFIO_REGS);
@@ -184,7 +184,7 @@ REG_GROUP(turfio, 0, TURFIO_REGS);
 #define SURF_REGS(DEF,BASE)  \
 DEF (surfid,          REG_RO(BASE, 0)) \
 DEF (dateversion,     REG_RO(BASE, 0x4)) \
-DEF (dna,             REG_RO(BASE, 0x8)) \
+DEF (dna,             REG(BASE, 0x8)) \
 DEF (reset_lol,       BF (BASE,0x0c,0,1)) \
 DEF (fp_led,          BF (BASE,0x0c,1,2)) \
 DEF (cal_use_rack,    BF (BASE,0x0c,3,1)) \
