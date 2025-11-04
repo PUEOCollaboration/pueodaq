@@ -282,8 +282,30 @@ static void * control_thread(void * arg);
 static void * reader_thread(void * arg);
 
 
+typedef union acked_msg
+{
+  uint64_t u;
+  turf_ctl_t c;
+  turf_rdreq_t r;
+  turf_rdresp_t p;
+  turf_wrreq_t w;
+  turf_ack_t a;
+} acked_msg_t __attribute__((__transparent_union__));
 
-static int blocking_wait_for_response(pueo_daq_t * daq,  int sck, struct sockaddr_in *wr, struct blocking_wait_check * check)
+typedef union acked_msg_ptr
+{
+  uint64_t *u;
+  turf_ctl_t *c;
+  turf_rdreq_t *r;
+  turf_rdresp_t *p;
+  turf_wrreq_t *w;
+  turf_ack_t *a;
+  acked_msg_t * m;
+} acked_msg_ptr_t __attribute__((__transparent_union__));
+
+
+
+static int blocking_wait_for_response(pueo_daq_t * daq,  int sck, struct sockaddr_in *wr, int Nmsg, acked_msg_ptr_t rcv, struct blocking_wait_check * check)
 {
   struct pollfd fd;
   fd.fd = sck;
@@ -295,14 +317,17 @@ static int blocking_wait_for_response(pueo_daq_t * daq,  int sck, struct sockadd
     return -1;
   }
 
-  //just wait, don't check
-  if (!check) return 0;
+  // no interest in reading, apparently
+  if (!rcv.u && !check)
+  {
+    return 0;
+  }
 
-  //otherwise read it into the buf and do the check
+  //read it into the buf and maybe  do the check
   struct  sockaddr_in  src;
   socklen_t srclen = sizeof(src);
 
-  ssize_t r = recvfrom(sck, &check->val, sizeof(check->val),0, &src, &srclen);
+  ssize_t r = recvfrom(sck, rcv.u ?: &check->val ,  rcv.u ? Nmsg * sizeof(rcv) : sizeof(check->val) ,0, &src, &srclen);
 
   //make sure we got something
   if ( r <= 0)
@@ -325,6 +350,9 @@ static int blocking_wait_for_response(pueo_daq_t * daq,  int sck, struct sockadd
     return -4;
   }
 
+  // copy to check if we got the whole thing
+  if (rcv.u) check->val = rcv.u[0];
+
   //check for wanted mismatch
   if ( (check->wanted & check->wanted_mask) != (check->val & check->wanted_mask)) 
   {
@@ -336,27 +364,6 @@ static int blocking_wait_for_response(pueo_daq_t * daq,  int sck, struct sockadd
 }
 
 #define LAUNDER_U64(x) *((uint64_t*) &x)
-
-typedef union acked_msg
-{
-  uint64_t u;
-  turf_ctl_t c;
-  turf_rdreq_t r;
-  turf_rdresp_t p;
-  turf_wrreq_t w;
-  turf_ack_t a;
-} acked_msg_t __attribute__((__transparent_union__));
-
-typedef union acked_msg_ptr
-{
-  uint64_t *u;
-  turf_ctl_t *c;
-  turf_rdreq_t *r;
-  turf_rdresp_t *p;
-  turf_wrreq_t *w;
-  turf_ack_t *a;
-  acked_msg_t * m;
-} acked_msg_ptr_t __attribute__((__transparent_union__));
 
 
 
@@ -388,14 +395,13 @@ static int acked_multisend(pueo_daq_t * daq, int sock, uint16_t port, size_t Nse
       continue;
     }
 
-    if (!check) break;
-    if (!blocking_wait_for_response(daq, sock, &a, check))
+    if (!blocking_wait_for_response(daq, sock, &a, Nsend, rcv, check))
     {
       if (daq->cfg.debug > 2)
       {
-        printf(" <   0x%016lx\n", check->val);
+        for (int i = 0 ; i < Nsend; i++)
+        printf(" <   0x%016lx\n", rcv.u[i]);
       }
-      if (rcv.u) *rcv.u= check->val;
       ret = 0;
       break;
     }
