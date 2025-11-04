@@ -397,7 +397,7 @@ static int acked_multisend(pueo_daq_t * daq, int sock, uint16_t port, size_t Nse
 
     if (!blocking_wait_for_response(daq, sock, &a, Nsend, rcv, check))
     {
-      if (daq->cfg.debug > 2)
+      if (daq->cfg.debug > 2 && rcv.u)
       {
         for (unsigned i = 0 ; i < (Nsend > 4 ? 4 : Nsend) ; i++)
         {
