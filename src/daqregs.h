@@ -286,38 +286,38 @@ read_incrementing_regs(pueo_daq_t * daq, uint8_t N, uint32_t base, const reg_t *
 int __attribute__((nonnull))
 write_based_reg(pueo_daq_t * daq, uint32_t base, const reg_t * reg, uint32_t val);
 
-inline int __attribute__((nonnull))
+static inline int __attribute__((nonnull))
 write_turf_reg(pueo_daq_t * daq, const reg_t * reg, uint32_t val)
 {
   return write_based_reg(daq, TURF_BASE, reg, val);
 }
 
 
-inline int __attribute__((nonnull))
+static inline int __attribute__((nonnull))
 read_turf_reg(pueo_daq_t * daq, const reg_t * reg, uint32_t * val)
 {
   return read_based_reg(daq, TURF_BASE, reg, val);
 }
 
-inline int  __attribute__((nonnull))
+static inline int  __attribute__((nonnull))
 write_surf_reg(pueo_daq_t * daq, surf_t surf, const reg_t * reg, uint32_t val)
 {
   return write_based_reg(daq, SURF_BASE(surf.link, surf.slot), reg, val);
 }
 
-inline int __attribute__((nonnull))
+static inline int __attribute__((nonnull))
 read_surf_reg(pueo_daq_t * daq, surf_t surf, const reg_t * reg, uint32_t * val)
 {
   return read_based_reg(daq,SURF_BASE(surf.link, surf.slot), reg, val);
 }
 
-inline int  __attribute__((nonnull))
+static inline int  __attribute__((nonnull))
 write_turfio_reg(pueo_daq_t * daq, uint8_t link , const reg_t * reg, uint32_t val)
 {
   return write_based_reg(daq, TURFIO_BASE(link & 0x3), reg, val);
 }
 
-inline int __attribute__((nonnull))
+static inline int __attribute__((nonnull))
 read_turfio_reg(pueo_daq_t * daq, uint8_t link, const reg_t * reg, uint32_t * val)
 {
   return read_based_reg(daq,TURFIO_BASE(link & 0x3), reg, val);
