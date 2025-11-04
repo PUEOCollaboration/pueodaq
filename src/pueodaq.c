@@ -30,10 +30,12 @@ typedef union fpga_id
   uint32_t u;
 } fpga_id_t;
 
+#define FPGAID(x) (fpga_id_t) { .u = ntohl(x) }
 
-const fpga_id_t the_turfid = { .c = {'F','R','U','T'} };
-const fpga_id_t the_surfid = { .c = {'F','R','U','S'} };
-const fpga_id_t the_tfioid = { .c = {'O','I','F','T'} };
+
+const fpga_id_t the_turfid = { .c = {'T','U','R','F'} };
+const fpga_id_t the_surfid = { .c = {'S','U','R','F'} };
+const fpga_id_t the_tfioid = { .c = {'T','F','I','O'} };
 
 
 
@@ -1045,7 +1047,7 @@ int pueo_daq_reset(pueo_daq_t * daq)
   // reset tags on TURFS
   read_turf_reg(daq,&turf.turfid,&daq->census.turfid);
 
-  if (daq->census.turfid != the_turfid.u)
+  if (FPGAID(daq->census.turfid).u != the_turfid.u)
   {
     fprintf(stderr,"TURF does not present as a TURF...this will probably end poorly\n");
   }
@@ -1057,8 +1059,7 @@ int pueo_daq_reset(pueo_daq_t * daq)
 
   if (daq->cfg.debug > 1)
   {
-    fpga_id_t id = { .u = daq->census.turfid };
-    printf("TURFID: %4sx\n", id.c);
+    printf("TURFID: %4sx\n", FPGAID(daq->census.turfid).c);
     printf("TURF DATEVER: ");
     datever_dump(stdout, daq->census.turf_datever);
     printf("\n");
@@ -1070,7 +1071,7 @@ int pueo_daq_reset(pueo_daq_t * daq)
   for (int itfio = 0; itfio < NTFIO; itfio++)
   {
     read_turfio_reg(daq, itfio, &turfio.turfioid, &daq->census.turfio[itfio].turfioid);
-    if (daq->census.turfio[itfio].turfioid !=  the_tfioid.u)  
+    if (FPGAID(daq->census.turfio[itfio].turfioid).u !=  the_tfioid.u)  
     {
       if (daq->cfg.debug)
       {
@@ -1087,8 +1088,7 @@ int pueo_daq_reset(pueo_daq_t * daq)
       if (daq->cfg.debug > 1)
       {
 
-        fpga_id_t id = { .u = daq->census.turfio[itfio].turfioid };
-        printf("TURFIO%d ID: %4s\n", itfio, id.c);
+        printf("TURFIO%d ID: %4s\n", itfio, FPGAID(daq->census.turfio[itfio].turfioid).c);
         printf("TURFIO%d  DATEVER: ", itfio);
         datever_dump(stdout, daq->census.turfio[itfio].turfio_datever);
         printf("\n");
@@ -1099,7 +1099,7 @@ int pueo_daq_reset(pueo_daq_t * daq)
       {
 
         read_surf_reg(daq,SURF(itfio, isurf), &surf.surfid, &daq->census.turfio[itfio].surfid[isurf]);
-        if (daq->census.turfio[itfio].surfid[isurf]  !=  the_surfid.u)  
+        if (FPGAID(daq->census.turfio[itfio].surfid[isurf]).u  !=  the_surfid.u)  
         {
           if (daq->cfg.debug)
           {
@@ -1114,8 +1114,7 @@ int pueo_daq_reset(pueo_daq_t * daq)
 
           if (daq->cfg.debug > 1)
           {
-            fpga_id_t id = { .u = daq->census.turfio[itfio].surfid[isurf] } ;
-            printf("TURFIO%d-SURF%d ID: %4s\n", itfio, isurf, id.c);
+            printf("TURFIO%d-SURF%d ID: %4s\n", itfio, isurf, FPGAID(daq->census.turfio[itfio].surfid[isurf]).c);
             printf("TURFIO%d-SURF%d  DATEVER: ", itfio, isurf);
             datever_dump(stdout, daq->census.turfio[itfio].surf_datever[isurf]);
             printf("\n");
