@@ -1699,7 +1699,7 @@ int pueo_daq_L1_stat_dump(FILE *f, const pueo_L1_stat_t * s)
    return ret;
 }
 
-#ifdef PUEODAQ_L1_MULTIREAD
+#ifndef PUEODAQ_L1_NOMULTIREAD
 int pueo_daq_read_L1_stat(pueo_daq_t * daq, int link, int slot, pueo_L1_stat_t * stat)
 {
   surf_t surf = SURF(link,slot);
@@ -1727,10 +1727,10 @@ int pueo_daq_read_L1_stat(pueo_daq_t * daq, int link, int slot, pueo_L1_stat_t *
 
   uint32_t scaler_bank[2];
 
-  if (read_incrementing_regs(daq, SURF_BASE(surf.link, surf.slot), PUEO_L1_BEAMS,  &surf_L1.threshold_base, thresholds)) { r = 1; goto do_end;}
-  if (read_incrementing_regs(daq, SURF_BASE(surf.link, surf.slot), PUEO_L1_BEAMS,  &surf_L1.pseudothreshold_base, pseudo_thresholds)) { r = 1; goto do_end;}
+  if (read_incrementing_regs(daq, PUEO_L1_BEAMS, SURF_BASE(surf.link, surf.slot),   &surf_L1.threshold_base, thresholds)) { r = 1; goto do_end;}
+  if (read_incrementing_regs(daq, PUEO_L1_BEAMS, SURF_BASE(surf.link, surf.slot),   &surf_L1.pseudothreshold_base, pseudo_thresholds)) { r = 1; goto do_end;}
   if (read_surf_reg(daq, surf, &surf_L1.current_scaler_bank, &scaler_bank[0])) { r = 1; goto do_end; }
-  if (read_incrementing_regs(daq, SURF_BASE(surf.link, surf.slot), PUEO_L1_BEAMS,  &surf_L1.scaler_base, (uint32_t*) scalers)) { r = 1; goto do_end;}
+  if (read_incrementing_regs(daq, PUEO_L1_BEAMS, SURF_BASE(surf.link, surf.slot),   &surf_L1.scaler_base, (uint32_t*) scalers)) { r = 1; goto do_end;}
   if (read_surf_reg(daq, surf, &surf_L1.current_scaler_bank, &scaler_bank[1])) { r = 1; goto do_end; }
 
 
