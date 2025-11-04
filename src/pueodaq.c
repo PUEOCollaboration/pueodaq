@@ -1699,6 +1699,7 @@ int pueo_daq_L1_stat_dump(FILE *f, const pueo_L1_stat_t * s)
    return ret;
 }
 
+#ifdef PUEODAQ_L1_MULTIREAD
 int pueo_daq_read_L1_stat(pueo_daq_t * daq, int link, int slot, pueo_L1_stat_t * stat)
 {
   surf_t surf = SURF(link,slot);
@@ -1757,4 +1758,77 @@ do_end:
 
   return r;
 }
+
+#else
+
+int pueo_daq_read_L1_stat(pueo_daq_t * daq, int link, int slot, pueo_L1_stat_t * stat)
+
+{
+
+  surf_t surf = SURF(link,slot);
+  int r = 0;
+  int i = 0;
+  reg_t threshold_reg = surf_L1.threshold_base;
+  reg_t pseudothreshold_reg = surf_L1.pseudothreshold_base;
+  reg_t scaler_reg = surf_L1.scaler_base;
+  clock_gettime(CLOCK_REALTIME, &stat->readout_time_start);
+  stat->surf_link = link;
+  stat->surf_slot = slot;
+
+  uint32_t lower_mask = 0;
+  uint32_t upper_mask = 0;
+
+  if (read_surf_reg(daq, surf, &surf_L1.lower_beam_mask, &lower_mask)) { r =1; goto do_end ;}
+  if (read_surf_reg(daq, surf, &surf_L1.upper_beam_mask, &upper_mask)) { r =1; goto do_end ;}
+
+  struct timespec end;
+  uint64_t complete_mask = upper_mask & 0x3fffffff;
+  complete_mask <<=18;
+  complete_mask |= (lower_mask  & 0x3ffff);
+
+  for (i = 0; i < PUEO_L1_BEAMS; i++)
+  {
+
+    uint32_t thresh = 0;
+    uint32_t pseudo_thresh = 0;
+    uint16_t scalers[2] = {0};
+    uint32_t scaler_bank[2];
+
+    if (read_surf_reg(daq, surf, &threshold_reg, &thresh)) { r = 1+i; goto do_end; }
+    if (read_surf_reg(daq, surf, &pseudothreshold_reg, &pseudo_thresh)) { r = 1+i; goto do_end; }
+    if (read_surf_reg(daq, surf, &surf_L1.current_scaler_bank, &scaler_bank[0])) { r = 1+i; goto do_end; }
+    if (read_surf_reg(daq, surf, &scaler_reg, (uint32_t*) scalers)) { r = 1+i; goto do_end; }
+    if (read_surf_reg(daq, surf, &surf_L1.current_scaler_bank, &scaler_bank[1])) { r = 1+i; goto do_end; }
+
+
+    stat->beams[i].threshold = thresh;
+    stat->beams[i].pseudothreshold = pseudo_thresh;
+    stat->beams[i].scaler = scalers[0];
+    stat->beams[i].pseudoscaler = scalers[1];
+    stat->beams[i].scaler_bank_before = scaler_bank[0];
+    stat->beams[i].scaler_bank_after = scaler_bank[1];
+    stat->beams[i].in_beam_mask = !! ( complete_mask & (1ull << i));
+
+
+    threshold_reg.addr+=4;
+    pseudothreshold_reg.addr+=4;
+    scaler_reg.addr+=4;
+  }
+
+do_end:
+
+
+
+  clock_gettime(CLOCK_REALTIME, &end);
+  stat->ms_elapsed = 1e3 * ( end.tv_sec - stat->readout_time_start.tv_sec + 1e-9 * (end.tv_nsec - stat->readout_time_start.tv_nsec));
+  if (r)
+  {
+    stat->flags = 0xff;
+    fprintf(stderr,"problem in pueo_daq_read_L1_stat (%d)\n", r);
+  }
+
+  return r;
+}
+
+#endif
 
