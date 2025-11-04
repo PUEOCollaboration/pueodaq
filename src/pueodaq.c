@@ -1245,7 +1245,7 @@ int pueo_daq_readmany(pueo_daq_t *daq, const pueo_daq_readmany_setup_t * s)
     msgs[i].BIT.TAG = tag;
   }
 
-  int r = acked_multisend(daq, daq->net.daq_ctl_sck, TURF_PORT_READ_REQ, s->N, msgs, resps, &READ_WAIT_CHECK(s->read_addr_v[0], tag));
+  int r = acked_multisend(daq, daq->net.daq_ctl_sck, TURF_PORT_READ_REQ, s->N, msgs, resps, &READ_WAIT_CHECK( msgs[0].BIT.ADDR, tag));
   if (s->data_v)
   {
     for (unsigned i = 0; i < s->N; i++)
