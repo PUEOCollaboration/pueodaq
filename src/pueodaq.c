@@ -546,9 +546,7 @@ void event_buf_idx_mark_free(pueo_daq_t * daq, uint32_t idx)
 {
    uint32_t w = idx / 64;
    uint32_t b = idx % 64;
-
-   uint32_t was = atomic_fetch_and(&daq->event_bufs_inuse_bitmap[w], ~(1ull << b));
-   assert((was & (1ull<<b)) == 1); //make sure we aren't done twice
+   atomic_fetch_and(&daq->event_bufs_inuse_bitmap[w], ~(1ull << b));
 }
 
 void event_buf_mark_free(pueo_daq_t * daq, struct event_buf * buf)
@@ -562,8 +560,7 @@ void event_buf_mark_ready(pueo_daq_t * daq, struct event_buf * buf)
    uint32_t idx = (((char*) buf) - ((char*) daq->event_bufs)) / daq->evbuf_sz;
    uint32_t w = idx / 64;
    uint32_t b = idx % 64;
-   uint32_t was = atomic_fetch_or(&daq->event_bufs_ready_bitmap[w], (1ull << b));
-   assert((was & (1ull<<b)) == 0); //make sure we aren't done twice
+   atomic_fetch_or(&daq->event_bufs_ready_bitmap[w], (1ull << b));
 }
 
 
