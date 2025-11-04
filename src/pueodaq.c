@@ -31,9 +31,9 @@ typedef union fpga_id
 } fpga_id_t;
 
 
-const fpga_id_t the_turfid = { .c = {'T','U','R','F'} };
-const fpga_id_t the_surfid = { .c = {'S','U','R','F'} };
-const fpga_id_t the_tfioid = { .c = {'T','F','I','O'} };
+const fpga_id_t the_turfid = { .c = {'F','R','U','T'} };
+const fpga_id_t the_surfid = { .c = {'F','R','U','S'} };
+const fpga_id_t the_tfioid = { .c = {'O','I','F','T'} };
 
 
 
