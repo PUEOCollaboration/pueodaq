@@ -399,7 +399,7 @@ static int acked_multisend(pueo_daq_t * daq, int sock, uint16_t port, size_t Nse
     {
       if (daq->cfg.debug > 2 && rcv.u)
       {
-        printf("     < ");
+        printf(" < ");
         for (unsigned i = 0 ; i < (Nsend > 4 ? 4 : Nsend) ; i++)
         {
           printf("  0x%016lx", rcv.u[i]);

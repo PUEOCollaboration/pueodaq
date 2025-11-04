@@ -16,7 +16,7 @@ int read_based_reg(pueo_daq_t * daq, uint32_t base, const reg_t * reg, uint32_t 
 int read_incrementing_regs(pueo_daq_t * daq, uint8_t N, uint32_t base, const reg_t * reg, uint32_t * val)
 {
 
-  pueo_daq_readmany_setup_t s = { .N = N, .read_addr_offset = base, .read_addr_base = reg->addr, .read_addr_increment = 4 };
+  pueo_daq_readmany_setup_t s = { .N = N, .read_addr_offset = base, .read_addr_base = reg->addr, .read_addr_increment = 4, .data_v = val };
 
   int r = pueo_daq_readmany(daq, &s);
 
