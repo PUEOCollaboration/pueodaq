@@ -288,6 +288,7 @@ typedef union acked_msg
   turf_ctl_t c;
   turf_rdreq_t r;
   turf_rdresp_t p;
+  turf_wrresp_t wp;
   turf_wrreq_t w;
   turf_ack_t a;
 } acked_msg_t __attribute__((__transparent_union__));
@@ -298,6 +299,7 @@ typedef union acked_msg_ptr
   turf_ctl_t *c;
   turf_rdreq_t *r;
   turf_rdresp_t *p;
+  turf_wrresp_t *wp;
   turf_wrreq_t *w;
   turf_ack_t *a;
   acked_msg_t * m;
@@ -387,9 +389,13 @@ static int acked_multisend(pueo_daq_t * daq, int sock, uint16_t port, size_t Nse
   for (unsigned attempt = 0; attempt < daq->cfg.max_attempts; attempt++)
   {
     pthread_mutex_lock(&daq->net.tx_lock);
-    ssize_t sent = sendto(sock, snd.m, Nsend * sizeof(acked_msg_t), 0, (struct sockaddr*) &a, sizeof(a));
+
+    // read request is smaller than rest so have to be careful here
+    size_t msg_size = port == TURF_PORT_READ_REQ ? sizeof(turf_rdreq_t) : sizeof(acked_msg_t);
+    ssize_t sent = sendto(sock, snd.m, Nsend * msg_size,
+                          0, (struct sockaddr*) &a, sizeof(a));
     pthread_mutex_unlock(&daq->net.tx_lock);
-    if (sent != (ssize_t) (Nsend *sizeof(acked_msg_t)))
+    if (sent != (ssize_t) (Nsend *msg_size))
     {
       fprintf(stderr,"Sending problem?\n");
       continue;
