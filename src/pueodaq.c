@@ -1426,6 +1426,13 @@ int pueo_daq_dump(pueo_daq_t * daq, FILE * stream, int flags)
   pueo_daq_get_scalers(daq, &sc);
   pueo_daq_scalers_dump(stream, &sc);
 
+  pueo_L2_stat_t l2;
+  if (!pueo_daq_read_L2_stat(daq, &l2))
+  {
+    pueo_daq_L2_stat_dump(stream,(&l2));
+  }
+
+
   for (int turfio = 0; turfio < NTFIO ; turfio++)
   {
     if (!daq->census.turfio[turfio].turfioid) continue;
