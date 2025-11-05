@@ -13,22 +13,24 @@ int read_based_reg(pueo_daq_t * daq, uint32_t base, const reg_t * reg, uint32_t 
 
 
 
+int write_incrementing_regs(pueo_daq_t * daq, uint8_t N, uint32_t base, const reg_t * reg, const uint32_t * val)
+{
+  pueo_daq_many_setup_t s = { .N = N, .addr_offset = base, .addr_start = reg->addr, .addr_step = 4, .wr_data_v = val };
+  return pueo_daq_write_many(daq, &s);
+}
+
 int read_incrementing_regs(pueo_daq_t * daq, uint8_t N, uint32_t base, const reg_t * reg, uint32_t * val)
 {
 
-  pueo_daq_readmany_setup_t s = { .N = N, .read_addr_offset = base, .read_addr_base = reg->addr, .read_addr_increment = 4, .data_v = val };
+  pueo_daq_many_setup_t s = { .N = N, .addr_offset = base, .addr_start = reg->addr, .addr_step = 4, .rd_data_v = val };
 
-  int r = pueo_daq_readmany(daq, &s);
 
-  if (val)
+  int r =   pueo_daq_read_many(daq, &s);
+  for (int i = 0; i < N; i++)
   {
-    for (int i = 0; i < N; i++)
-    {
-      val[i] &=  reg->mask;
-      val[i] >>= reg->offs;
-    }
+    val[i] &=  reg->mask;
+    val[i] >>= reg->offs;
   }
-
   return r;
 
 }
@@ -36,23 +38,20 @@ int read_incrementing_regs(pueo_daq_t * daq, uint8_t N, uint32_t base, const reg
 int read_based_regs(pueo_daq_t * daq, uint8_t N, uint32_t base, const reg_t ** reg, uint32_t * val)
 {
 
-  static __thread uint32_t addrs[PUEODAQ_MAX_READMANY_SIZE];
+  static __thread uint32_t addrs[PUEODAQ_MAX_MANY_SIZE];
   for (int i = 0; i < N; i++)
   {
     addrs[i] = base + reg[i]->addr;
   }
-  pueo_daq_readmany_setup_t s = { .N = N, .read_addr_v = addrs, .data_v = val };
+  pueo_daq_many_setup_t s = { .N = N, .addr_v = addrs, .rd_data_v = val };
 
 
-  int r = pueo_daq_readmany(daq, &s);
+  int r = pueo_daq_read_many(daq, &s);
 
-  if (val)
+  for (int i = 0; i < N; i++)
   {
-    for (int i = 0; i < N; i++)
-    {
-      val[i] &=  reg[i]->mask;
-      val[i] >>= reg[i]->offs;
-    }
+    val[i] &=  reg[i]->mask;
+    val[i] >>= reg[i]->offs;
   }
 
   return r;

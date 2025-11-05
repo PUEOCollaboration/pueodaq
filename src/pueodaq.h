@@ -40,7 +40,7 @@
 #define PUEODAQ_NSAMP 1024
 #define PUEODAQ_MAX_HEADER_SIZE 1024
 
-#define PUEODAQ_MAX_READMANY_SIZE 256
+#define PUEODAQ_MAX_MANY_SIZE 256
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -226,21 +226,28 @@ int pueo_daq_reset(pueo_daq_t * daq);
 int pueo_daq_write(pueo_daq_t *daq, uint32_t wraddr, uint32_t data);
 int pueo_daq_read(pueo_daq_t *daq, uint32_t rdaddr, uint32_t * data);
 
-typedef struct pueo_daq_readmany_setup
+typedef struct pueo_daq_many_setup
 {
   unsigned N; //number to read
-  unsigned in_stride; // 0 same as 1
-  unsigned out_stride; // 0 same as 1
-  const uint32_t * read_addr_v; // 
-  uint32_t read_addr_offset; // added to each address
-  uint32_t read_addr_base;  // used if read_addr_v is NULL
-  uint32_t read_addr_increment;  // used if read_addr_v is NULL
-  const uint32_t * read_addr_offset_v;  // if not NULL wil lbe added individually to read addresses
-  uint32_t * data_v;
+  unsigned addr_stride; // 0 same as 1
+  unsigned data_stride; // 0 same as 1
+  const uint32_t * addr_v; //NULL ok to use
+  uint32_t addr_offset; // added to each address, unconditionally
+  uint32_t addr_start;  // used if addr_v is NULL to define a range
+  uint32_t addr_step;  // used if addr_v is NULL
+  const uint32_t * addr_offset_v;  // if not NULL wil lbe added individually to read addresses
 
-} pueo_daq_readmany_setup_t;
+  uint32_t * rd_data_v;  //used if reading
+  const uint32_t * wr_data_v;  //used if writing
+  uint32_t * const * rd_indirect_data_v;  //used if reading and rd_data_v is NULL
+  const uint32_t * const * wr_indirect_data_v;  //used if writing and wr_data_v is NULL
+  uint32_t wr_val; // used if wr_data_v is NULL and wr_indirect_data_v is NULL
 
-int pueo_daq_readmany(pueo_daq_t *daq,  const pueo_daq_readmany_setup_t * s);
+
+} pueo_daq_many_setup_t;
+
+int pueo_daq_read_many(pueo_daq_t *daq, const pueo_daq_many_setup_t * s);
+int pueo_daq_write_many(pueo_daq_t *daq, const pueo_daq_many_setup_t * s);
 
 
 typedef struct pueo_daq_stats

@@ -1241,30 +1241,56 @@ int pueo_daq_write(pueo_daq_t * daq, uint32_t wraddr, uint32_t data)
 }
 
 
-int pueo_daq_readmany(pueo_daq_t *daq, const pueo_daq_readmany_setup_t * s)
+int pueo_daq_write_many(pueo_daq_t *daq, const pueo_daq_many_setup_t * s)
 {
-  if (!s || s->N > PUEODAQ_MAX_READMANY_SIZE) return -1;
+  if (!s || s->N > PUEODAQ_MAX_MANY_SIZE) return -1;
   if (!s->N) return 0;
 
-  static __thread turf_rdreq_t msgs[PUEODAQ_MAX_READMANY_SIZE];
-  static __thread turf_rdresp_t resps[PUEODAQ_MAX_READMANY_SIZE];
-  uint32_t tag =  atomic_fetch_add(&daq->net.rd_tag,1)  & 0xf;
-  int in_stride = s->in_stride ?: 1;
-  int out_stride = s->out_stride ?: 1;
+  static __thread turf_wrreq_t msgs[PUEODAQ_MAX_MANY_SIZE];
+  static __thread turf_wrresp_t resps[PUEODAQ_MAX_MANY_SIZE];
+  uint32_t tag =  atomic_fetch_add(&daq->net.wr_tag,1)  & 0xf;
+  int addr_stride = s->addr_stride ?: 1;
+  int data_stride = s->data_stride ?: 1;
 
   for (unsigned i = 0; i < s->N; i++)
   {
-    msgs[i].BIT.ADDR =  s->read_addr_v ? s->read_addr_v[in_stride*i] : s->read_addr_base + s->read_addr_increment *i;
-    msgs[i].BIT.ADDR += s->read_addr_offset + ( s->read_addr_offset_v ? s->read_addr_offset_v[i*in_stride] : 0);
+    msgs[i].BIT.ADDR =  s->addr_v ? s->addr_v[addr_stride*i] : s->addr_start + s->addr_step *i;
+    msgs[i].BIT.ADDR += s->addr_offset + ( s->addr_offset_v ? s->addr_offset_v[i*addr_stride] : 0);
+    msgs[i].BIT.WRDATA = s->wr_data_v ? s->wr_data_v[i*data_stride] :
+                         s->wr_indirect_data_v ? *s->wr_indirect_data_v[i * data_stride] :
+                         s->wr_val;
+    msgs[i].BIT.TAG = tag;
+  }
+
+   return acked_multisend(daq, daq->net.daq_ctl_sck, TURF_PORT_READ_REQ, s->N, msgs, resps, &WRITE_WAIT_CHECK( msgs[0].BIT.ADDR, tag));
+}
+
+int pueo_daq_read_many(pueo_daq_t *daq, const pueo_daq_many_setup_t * s)
+{
+  if (!s || s->N > PUEODAQ_MAX_MANY_SIZE) return -1;
+  if (!s->N) return 0;
+
+  static __thread turf_rdreq_t msgs[PUEODAQ_MAX_MANY_SIZE];
+  static __thread turf_rdresp_t resps[PUEODAQ_MAX_MANY_SIZE];
+  uint32_t tag =  atomic_fetch_add(&daq->net.rd_tag,1)  & 0xf;
+  int addr_stride = s->addr_stride ?: 1;
+  int data_stride = s->data_stride ?: 1;
+
+  for (unsigned i = 0; i < s->N; i++)
+  {
+    msgs[i].BIT.ADDR =  s->addr_v ? s->addr_v[addr_stride*i] : s->addr_start + s->addr_step *i;
+    msgs[i].BIT.ADDR += s->addr_offset + ( s->addr_offset_v ? s->addr_offset_v[i*addr_stride] : 0);
     msgs[i].BIT.TAG = tag;
   }
 
   int r = acked_multisend(daq, daq->net.daq_ctl_sck, TURF_PORT_READ_REQ, s->N, msgs, resps, &READ_WAIT_CHECK( msgs[0].BIT.ADDR, tag));
-  if (s->data_v)
+
+  if (s->rd_data_v || s->rd_indirect_data_v)
   {
     for (unsigned i = 0; i < s->N; i++)
     {
-      s->data_v[out_stride *i] = resps[i].BIT.RDDATA;
+       if (s->rd_data_v) s->rd_data_v[data_stride *i] = resps[i].BIT.RDDATA;
+       else  *s->rd_indirect_data_v[data_stride*i] = resps[i].BIT.RDDATA;
     }
   }
   return r;
