@@ -1677,19 +1677,21 @@ int pueo_daq_get_stats(pueo_daq_t * daq, pueo_daq_stats_t * st)
 int pueo_daq_get_scalers(pueo_daq_t * daq, pueo_daq_scalers_t* s)
 {
   if (!s) return -1;
-  reg_t reg = turf_trig.scaler_base;
-  reg_t end = turf_trig.scaler_max;
+
+
   clock_gettime(CLOCK_REALTIME, &s->readout_time);
-
-  int count = 0;
-  while (reg.addr <= end.addr)
-  {
-    if (read_turf_reg(daq, &reg, &s->scalers.v[count++])) return 1;
-    reg.addr+=4;
-  }
-
-  return 0;
+  return read_incrementing_regs(daq, 32, 0, &turf_scalers.scaler_base, s->scalers.v);
 }
+
+int pueo_daq_read_L2_stat(pueo_daq_t * daq, pueo_L2_stat_t* s)
+{
+  if (!s) return -1;
+
+  clock_gettime(CLOCK_REALTIME, &s->readout_time_start);
+  return read_incrementing_regs(daq, 12, 0, &turf_scalers.leveltwo_base, (uint32_t*) s->Hscalers);
+}
+
+
 
 int pueo_daq_scalers_dump(FILE *f, const pueo_daq_scalers_t * s)
 {
@@ -1738,6 +1740,26 @@ int pueo_daq_L1_stat_dump(FILE *f, const pueo_L1_stat_t * s)
    }
    return ret;
 }
+
+
+int pueo_daq_set_L1_thresholds(pueo_daq_t * daq, int surf_link, int surf_slot, const uint32_t * thresholds, const uint32_t * pseudo_thresholds)
+{
+
+  if (thresholds)
+  {
+    if ( write_incrementing_regs(daq, PUEO_L1_BEAMS, SURF_BASE(surf_link, surf_slot), &surf_L1.threshold_base, thresholds))
+      return 1;
+  }
+
+  if (pseudo_thresholds)
+  {
+
+    if ( write_incrementing_regs(daq, PUEO_L1_BEAMS, SURF_BASE(surf_link, surf_slot), &surf_L1.pseudothreshold_base, pseudo_thresholds))
+      return 1;
+  }
+  return 0;
+}
+
 
 #ifndef PUEODAQ_L1_NOMULTIREAD
 int pueo_daq_read_L1_stat(pueo_daq_t * daq, int link, int slot, pueo_L1_stat_t * stat)

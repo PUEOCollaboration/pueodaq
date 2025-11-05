@@ -5,10 +5,7 @@
 #include <stdbool.h>
 
 
-#pragma GCC visibility push(hidden)
-
-
-
+#pragma GCC visibility push (hidden)
 
 
 
@@ -138,19 +135,31 @@ DEF(ext_trig_select,      BF (BASE,0x10c,1,1))   \
 DEF(ext_offset,           BF (BASE,0x10c,16,16))   \
 DEF(softrig,              REG(BASE, 0x110)) \
 DEF(running,              BF (BASE, 0x110, 16,1)) \
-DEF(occupancy,         REG_RO(BASE, 0x114)) \
+DEF(occupancy,            REG_RO(BASE, 0x114)) \
 DEF(holdoff_reg,          REG(BASE, 0x118)) \
 DEF(holdoff,              BF (BASE, 0x118, 0, 16)) \
 DEF(surf_err,             BF (BASE, 0x118, 16, 1)) \
 DEF(turf_err,             BF (BASE, 0x118, 17, 1)) \
-DEF(trigger_count,     REG_RO(BASE, 0x11c))\
-DEF(scaler_base,       REG_RO(BASE, 0x300))\
-DEF(scaler_max,       REG_RO(BASE, 0x37c))
+DEF(leveltwo_logic,       BF (BASE, 0x118, 24, 1)) \
+DEF(rf_trig_en,           BF (BASE, 0x118, 25, 1)) \
+DEF(trigger_count,        REG_RO(BASE, 0x11c))\
+DEF(ext_prescale,         REG(BASE, 0x120))\
+DEF(photo_prescale,       BF(BASE, 0x124, 0, 8))\
+DEF(photo_enable,         BF(BASE, 0x124, 16, 1))
 
 REG_GROUP(turf_trig, 0x1c000, TRIG_REGS);
 
+#define SCALER_REGS(DEF,BASE)\
+DEF(scaler_base,      REG_RO(BASE, 0x000))\
+DEF(scaler_max,       REG_RO(BASE, 0x07c))\
+DEF(gate_sel,         BF    (BASE, 0x080, 0, 3))\
+DEF(pps_gatelen,      BF    (BASE, 0x080, 16, 16))\
+DEF(gate_en,          REG    (BASE, 0x084))\
+DEF(leveltwo_base,    REG_RO (BASE, 0x0a0))\
+DEF(leveltwo_max,     REG_RO (BASE, 0x0fc))
 
 
+REG_GROUP(turf_scalers, 0x1c300 ,SCALER_REGS);
 
 //TODO  this should be automatically generated probably
 typedef union
