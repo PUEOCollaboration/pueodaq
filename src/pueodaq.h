@@ -365,8 +365,9 @@ typedef struct pueo_L2_stat
 } pueo_L2_stat_t;
 
 int pueo_daq_L1_stat_dump(FILE *f, const pueo_L1_stat_t * s);
+int pueo_daq_L2_stat_dump(FILE *f, const pueo_L2_stat_t * s);
 
 
 int pueo_daq_read_L1_stat(pueo_daq_t * daq, int surf_link, int surf_slot, pueo_L1_stat_t * stat);
-int pueo_daq_read_L2_stat(pueo_daq_t * daq, pueo_L2_stat_t * stat); 
+int pueo_daq_read_L2_stat(pueo_daq_t * daq, pueo_L2_stat_t * stat);
 

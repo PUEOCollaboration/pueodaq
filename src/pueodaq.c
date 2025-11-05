@@ -1741,6 +1741,18 @@ int pueo_daq_L1_stat_dump(FILE *f, const pueo_L1_stat_t * s)
    return ret;
 }
 
+int pueo_daq_L2_stat_dump(FILE *f, const pueo_L2_stat_t * s)
+{
+   int ret = 0;
+   ret+= fprintf(f,"L2 stat dump @%lu.%09ld\n" ,s->readout_time_start.tv_sec, s->readout_time_start.tv_nsec);
+   ret+= printf("==SEMISECTOR=====HSCAL======VSCAL");
+   for (int i = 0; i < 12; i++)
+   {
+      ret+= printf("  %02d    %06d    %06d\n ", i, s->Hscalers[i], s->Vscalers[i]);
+   }
+   return ret;
+}
+
 
 int pueo_daq_set_L1_thresholds(pueo_daq_t * daq, int surf_link, int surf_slot, const uint32_t * thresholds, const uint32_t * pseudo_thresholds)
 {
