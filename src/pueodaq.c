@@ -1676,6 +1676,8 @@ int pueo_daq_get_stats(pueo_daq_t * daq, pueo_daq_stats_t * st)
   st->holdoff =  holdoff.as_holdoff.holdoff;
   st->turf_err = holdoff.as_holdoff.turf_err;
   st->surf_err = holdoff.as_holdoff.surf_err;
+  st->leveltwo_logic = holdoff.as_holdoff.leveltwo_logic;
+  st->rf_trig_en = holdoff.as_holdoff.rf_trig_en;
   st->in_reset = in_reset;
 
   return 0;
