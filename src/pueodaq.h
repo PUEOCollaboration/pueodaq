@@ -126,9 +126,9 @@ typedef union pueo_daq_event_header
   "  \"surf_header_words\": %hu,\n  \"transposed_surf_headers\":  [0x%llx, 0x%llx, 0x%llx, 0x%llx]\n}\n"
 
 #define PUEO_DAQ_EVENT_HEADER_VALUES(HDR)\
-  HDR.header_words_m1 + 1, HDR.header_version, HDR.event_number, HDR.event_second, HDR.event_time, HDR.last_pps, HDR.llast_pps,\
-  HDR.trigger_meta[0], HDR.trigger_meta[1], HDR.trigger_meta[2], HDR.trigger_meta[3], HDR.tfio_mask, HDR.tid, HDR.surf_header_words,\
-  HDR.transposed_surf_headers[0], HDR.transposed_surf_headers[1], HDR.transposed_surf_headers[2], HDR.transposed_surf_headers[3]
+  HDR.vals.header_words_m1 + 1, HDR.vals.header_version, HDR.vals.event_number, HDR.vals.event_second, HDR.vals.event_time, HDR.vals.last_pps, HDR.vals.llast_pps,\
+  HDR.vals.trigger_meta[0], HDR.vals.trigger_meta[1], HDR.vals.trigger_meta[2], HDR.vals.trigger_meta[3], HDR.vals.tfio_mask, HDR.vals.tid, HDR.vals.surf_header_words,\
+  HDR.vals.transposed_surf_headers[0], HDR.vals.transposed_surf_headers[1], HDR.vals.transposed_surf_headers[2], HDR.vals.transposed_surf_headers[3]
 
 typedef struct pueo_daq_event_data
 {
