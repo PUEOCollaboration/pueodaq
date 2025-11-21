@@ -682,6 +682,7 @@ static struct  event_buf * event_buf_for_fragment(pueo_daq_t * daq, turf_fraghdr
 }
 
 
+
 static int event_buf_reset(struct event_buf * evbuf)
 {
   // this should only happen in a single thread at a time so no need to use atomic stores
@@ -1375,7 +1376,7 @@ void * reader_thread(void *arg)
     {
       int surf_header_size = frag->buf[frag->buf[0]];
       ev->header_size =  (surf_header_size + frag->buf[0] +1)*2;
-      ev->nsamples = (ev->nbytes_expected -  ev->header_size) / PUEODAQ_NCHAN / 2;
+      ev->nsamples = (ev->nbytes_expected -  ev->header_size - sizeof(turf_fraghdr_t)) / PUEODAQ_NCHAN / 2;
     }
 
 
@@ -1535,6 +1536,7 @@ void* control_thread(void * arg)
   turf_nack_t nack;
   uint8_t tag = 0;
 
+  size_t loop_counter = 0;
 
   while(true)
   {
@@ -1616,11 +1618,21 @@ void* control_thread(void * arg)
       }
 
     }
+    else if (loop_counter > 0 &&  (loop_counter % 1000 == 0))  // run the loop counter every once in a while. Maybe we'll eventualy make it configurable. 
+    {
+      struct timespec now;
+      clock_gettime(CLOCK_MONOTONIC, &now);
+      // loop over used event fragments, see if any of them are started but not finished
+
+    }
     else
     {
       usleep(100);
     }
 
+
+
+    loop_counter++;
     // TODO go through and see if there is anything really old that needs to be nacked
   }
   return NULL;
