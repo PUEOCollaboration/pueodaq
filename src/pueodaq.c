@@ -1381,7 +1381,7 @@ void * reader_thread(void *arg)
 
     //add fragments received
     uint16_t prior = atomic_fetch_add(&ev->nfragments_rcvd, 1);
-   if (daq->cfg.debug > 1) printf("[fragnum=%hu][addr=%hu](nrecv=%hu/%hu) @ %ld.%09ld\n",fragnum, addr, 1+prior, ev->nfragments_expected, now.tv_sec, now.tv_nsec);
+    if (daq->cfg.debug > 1) printf("[fragnum=%hu][addr=%hu](nrecv=%hu/%hu) @ %ld.%09ld\n",fragnum, addr, 1+prior, ev->nfragments_expected, now.tv_sec, now.tv_nsec);
 
     // we finished.I think this is ok since we can't get more than nfagments_expected fragments, right?
     if (prior == ev->nfragments_expected -1)
@@ -1632,6 +1632,13 @@ int pueo_daq_soft_trig(pueo_daq_t * daq)
   return write_turf_reg(daq, &turf_trig.softrig, 1);
 }
 
+
+int pueo_daq_enable_rf_readout(pueo_daq_t * daq, bool enable)
+{
+  return write_turf_reg(daq, &turf_trig.rf_trig_en, enable);
+}
+
+
 int pueo_daq_get_stats(pueo_daq_t * daq, pueo_daq_stats_t * st)
 {
   uint32_t in_reset;
@@ -1697,7 +1704,7 @@ int pueo_daq_read_L2_stat(pueo_daq_t * daq, pueo_L2_stat_t* s)
   if (!s) return -1;
 
   clock_gettime(CLOCK_REALTIME, &s->readout_time_start);
-  return read_incrementing_regs(daq, 12, 0, &turf_scalers.leveltwo_base, (uint32_t*) s->Hscalers);
+  return read_incrementing_regs(daq, 24, 0, &turf_scalers.leveltwo_base, (uint32_t*) s->Hscalers);
 }
 
 
@@ -1763,22 +1770,53 @@ int pueo_daq_L2_stat_dump(FILE *f, const pueo_L2_stat_t * s)
 }
 
 
+#define PUEODAQ_L1_NOMULTIWRITE
 int pueo_daq_set_L1_thresholds(pueo_daq_t * daq, int surf_link, int surf_slot, const uint32_t * thresholds, const uint32_t * pseudo_thresholds)
 {
 
   if (thresholds)
   {
+#ifndef PUEODAQ_L1_NOMULTIWRITE
     if ( write_incrementing_regs(daq, PUEO_L1_BEAMS, SURF_BASE(surf_link, surf_slot), &surf_L1.threshold_base, thresholds))
       return 1;
+#else
+    reg_t thresh_reg = surf_L1.threshold_base;
+    for (int ibeam = 0; ibeam < PUEO_L1_BEAMS; ibeam++)
+    {
+      write_surf_reg(daq, SURF(surf_link,surf_slot), &thresh_reg, thresholds[ibeam]);
+      thresh_reg.addr += 4;
+    }
+#endif
+
+
   }
 
   if (pseudo_thresholds)
   {
 
+#ifndef PUEODAQ_L1_NOMULTIWRITE
     if ( write_incrementing_regs(daq, PUEO_L1_BEAMS, SURF_BASE(surf_link, surf_slot), &surf_L1.pseudothreshold_base, pseudo_thresholds))
       return 1;
+
+#else
+    reg_t thresh_reg = surf_L1.pseudothreshold_base;
+    for (int ibeam = 0; ibeam < PUEO_L1_BEAMS; ibeam++)
+    {
+      write_surf_reg(daq, SURF(surf_link,surf_slot), &thresh_reg, pseudo_thresholds[ibeam]);
+      thresh_reg.addr += 4;
+    }
+#endif
+
+
   }
   return 0;
+}
+
+int pueo_daq_L1_masks(pueo_daq_t * daq, int link, int slot, uint64_t beam_mask)
+{
+  return
+  write_surf_reg(daq, SURF(link,slot), &surf_L1.lower_beam_mask, (~beam_mask) &0x3ff) ||
+  write_surf_reg(daq, SURF(link,slot), &surf_L1.upper_beam_mask, (1ull << 31) | (((~beam_mask) >> 18) & 0x3fffffff));
 }
 
 
@@ -1826,7 +1864,7 @@ int pueo_daq_read_L1_stat(pueo_daq_t * daq, int link, int slot, pueo_L1_stat_t *
     stat->beams[i].pseudoscaler = scalers[i][1];
     stat->beams[i].scaler_bank_before = scaler_bank[0];
     stat->beams[i].scaler_bank_after = scaler_bank[1];
-    stat->beams[i].in_beam_mask = !! ( complete_mask & (1ull << i));
+    stat->beams[i].in_beam_mask = !( complete_mask & (1ull << i));
   }
 
 do_end:
@@ -1914,4 +1952,26 @@ do_end:
 }
 
 #endif
+
+
+int pueo_daq_set_L2_mask(pueo_daq_t * daq, uint32_t mask)
+{
+  mask=~mask; // TURF mask is inverted
+  mask&=0x3ffffff;
+  return write_turf_reg(daq, &turf_trig.mask, mask);
+}
+
+int pueo_daq_set_L2_mask_by_2phi(pueo_daq_t * daq, uint16_t H, uint16_t V)
+{
+  // MI
+  uint32_t mask = (H & 0xfff) | ((V & 0xfff) <<12);
+
+  //LF
+  mask |= (H & 0x10000) << 24;
+  mask |= (V & 0x10000) << 25;
+
+  return pueo_daq_set_L2_mask(daq, mask);
+}
+
+
 
