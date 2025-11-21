@@ -25,6 +25,7 @@ const char * outdir = "/tmp";
 int fraglen = 1024;
 int frag_src_mask = 0x3f;
 int last_idx = 0;
+int maybe_thresholds = -1;
 
 int ready(pueo_daq_t * daq, uint32_t idx)
 {
@@ -52,7 +53,7 @@ int ready(pueo_daq_t * daq, uint32_t idx)
 
 void usage()
 {
-  printf("pueo-fakedaq [-I SOFTTRIGINTERVAL=1.0] [-T TURFIOMASK=0x0] [-L FRAGLEN=1024] [-t NUMRDRTHREADS=1] [-M MAXINFLIGHT=32] [-o OUTDIR=/tmp] [-d DEBUGLEVEL=1] [-STATSINTERVAL = 5] [-h] [-0]\n"); 
+  printf("pueo-fakedaq [-I SOFTTRIGINTERVAL=1.0] [-T TURFIOMASK=0x0] [-L FRAGLEN=1024] [-t NUMRDRTHREADS=1] [-H set all thresholds to value] [-M MAXINFLIGHT=32] [-o OUTDIR=/tmp] [-d DEBUGLEVEL=1] [-STATSINTERVAL = 5] [-h] [-0]\n"); 
   printf("   -0 means throw everything away (good for benchmarks)\n");
 
 }
@@ -78,6 +79,10 @@ int main (int nargs, char ** args)
       else if (!strcmp(args[i],"-T") && !last)
       {
         turfio_mask = strtol(args[++i], NULL, 0);
+      }
+      else if (!strcmp(args[i],"-H") && !last)
+      {
+        maybe_thresholds = strtol(args[++i], NULL, 0);
       }
       else if (!strcmp(args[i],"-L") && !last)
       {
@@ -137,6 +142,26 @@ int main (int nargs, char ** args)
   pueo_daq_register_ready_callback(daq, ready);
 
   pueo_daq_pps_setup(daq,true,0);
+  pueo_daq_enable_rf_readout(daq,true);
+
+  if (maybe_thresholds > 0)
+  {
+    static uint32_t thresholds[PUEO_L1_BEAMS];
+    static uint32_t pseudo_thresholds[PUEO_L1_BEAMS];
+    for (int i = 0; i < PUEO_L1_BEAMS; i++)
+    {
+      thresholds[i] = maybe_thresholds;
+      pseudo_thresholds[i] = maybe_thresholds*0.8;
+    }
+
+    for (int turfio = 0; turfio < 4; turfio++)
+    {
+      for (int surf = 0; surf < 7; surf++)
+      {
+        pueo_daq_set_L1_thresholds(daq, turfio, surf, thresholds, pseudo_thresholds);
+      }
+    }
+  }
 
   pueo_daq_start(daq);
 
