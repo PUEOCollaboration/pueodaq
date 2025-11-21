@@ -169,6 +169,10 @@ typedef union
       uint32_t holdoff : 16;
       uint32_t surf_err : 1;
       uint32_t turf_err : 1;
+      uint32_t nada : 6; 
+      uint32_t leveltwo_logic : 1; 
+      uint32_t rf_trig_en : 1;
+
     } as_holdoff;
     uint32_t as_uint;
 } holdoff_reg_t;
@@ -229,8 +233,8 @@ REG_GROUP(surf, 0x0, SURF_REGS);
 0x1804: Scaler control. Bit[0] = reset scaler system, Bit[1] = current scaler bank (toggles when a scaler count period has completed)
 0x1808: Scaler adjust. Write _the number of 10 ns clocks you want to shift the period by_. Reads back the number of 10 ns clocks in the total period. Base is 100,000,000.
 0x2004: Generator reset control. Bit [1] = AGC loop reset. Bit [8] = Trigger generator reset.
-0x2008: Lower 18 bits of beam mask. Bit 31 Updates.
-0x200C: Upper 30 bits of beam mask. Bit 31 Updates.
+0x2008: Lower 18 bits of beam mask. 
+0x200C: Upper 30 bits of beam mask. Bit 31 Updates both masks, we think.
 */
 #define SURFL1_REGS(DEF,BASE) \
   DEF( threshold_adj_delta,         REG_RO(BASE,0x000))\
