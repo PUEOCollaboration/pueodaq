@@ -1434,15 +1434,18 @@ int pueo_daq_dump(pueo_daq_t * daq, FILE * stream, int flags)
   }
 
 
-  for (int turfio = 0; turfio < NTFIO ; turfio++)
+  if (flags & PUEODAQ_DUMP_INCLUDE_L1)
   {
-    if (!daq->census.turfio[turfio].turfioid) continue;
-    for (int slot = 0; slot < NSURFSLOTS ; slot++)
+    for (int turfio = 0; turfio < NTFIO ; turfio++)
     {
-      if (!daq->census.turfio[turfio].surfid[slot]) continue;
-      pueo_L1_stat_t l1;
-      if (!pueo_daq_read_L1_stat(daq, turfio, slot, &l1))
-        pueo_daq_L1_stat_dump(stream, &l1);
+      if (!daq->census.turfio[turfio].turfioid) continue;
+      for (int slot = 0; slot < NSURFSLOTS ; slot++)
+      {
+        if (!daq->census.turfio[turfio].surfid[slot]) continue;
+        pueo_L1_stat_t l1;
+        if (!pueo_daq_read_L1_stat(daq, turfio, slot, &l1))
+          pueo_daq_L1_stat_dump(stream, &l1);
+      }
     }
   }
 

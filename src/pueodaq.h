@@ -196,6 +196,7 @@ pueo_daq_t * pueo_daq_init(const pueo_daq_config_t * cfg);
  * */
 void pueo_daq_destroy(pueo_daq_t* daq);
 
+#define PUEODAQ_DUMP_INCLUDE_L1 1
 /** Dump debug info to stream
  *
  * @param daq the DAQ handle
