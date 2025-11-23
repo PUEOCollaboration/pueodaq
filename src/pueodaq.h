@@ -82,7 +82,15 @@ typedef struct pueo_daq_config
   struct timespec timeout;
   size_t max_attempts;
   int debug;
-  uint32_t turfio_mask : 4;
+
+  //things that don't really change at runtime?
+  struct
+  {
+    uint32_t turfio_mask : 4; //note that 0 means working here, opposite of how I would define it
+    uint16_t offset;
+    uint16_t latency;
+    uint8_t  rundly;
+  } trigger;
 
 
 } pueo_daq_config_t;
@@ -145,8 +153,8 @@ typedef int (*pueo_daq_event_ready_callback_t)(pueo_daq_t * daq, uint32_t idx);
 / pueo_daq_config_t cfg =  { PUEO_DAQ_CONFIG_DFLT, .fragment_size = 5000};
 */
 #define PUEO_DAQ_CONFIG_DFLT                \
-  .fragment_size = 8184,                    \
-  .n_event_bufs = 512,             \
+  .fragment_size = 8192,                    \
+  .n_event_bufs = 512,                      \
   .max_in_flight = 32,                      \
   .max_ev_size = 1 << 20,                   \
   .n_recvthreads = 4,                       \
@@ -160,7 +168,8 @@ typedef int (*pueo_daq_event_ready_callback_t)(pueo_daq_t * daq, uint32_t idx);
     .fragment_in = 0x5278,                  \
   },                                        \
   .timeout = {.tv_sec = 0, .tv_nsec = 1e8 }, \
-  .max_attempts = 10, .debug = false, .turfio_mask = 0x0
+  .max_attempts = 10, .debug = false,\
+  .trigger = { .turfio_mask = 0x0, .offset = 39, .latency = 0, .rundly = 3 }
 
 
 

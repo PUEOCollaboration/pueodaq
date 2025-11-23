@@ -949,27 +949,27 @@ int pueo_daq_start(pueo_daq_t * daq)
 
 
  //turfio mask, etc.
-  if (write_turf_reg(daq, &turf_event.mask, daq->cfg.turfio_mask))
+  if (write_turf_reg(daq, &turf_event.mask, daq->cfg.trigger.turfio_mask))
   {
     fprintf(stderr,"Couldn't write turfio mask\n");
   }
 
-  if (daq->cfg.turfio_mask != 0xf)
+  if (daq->cfg.trigger.turfio_mask != 0xf)
   {
-    if (write_turf_reg(daq, &turf_trig.latency, 200))
+    if (write_turf_reg(daq, &turf_trig.latency, daq->cfg.trigger.latency))
     {
       fprintf(stderr,"Couldn't write trig latency\n");
     }
 
-    if (write_turf_reg(daq, &turf_trig.offset, 0))
+    if (write_turf_reg(daq, &turf_trig.offset, daq->cfg.trigger.offset))
     {
       fprintf(stderr,"Couldn't write trig offset\n");
     }
   }
 
 
-  //set up rundl
-  if (write_turf_reg(daq, &turf_trig.rundly, 3))
+  //set up rundly
+  if (write_turf_reg(daq, &turf_trig.rundly, daq->cfg.trigger.rundly))
   {
     fprintf(stderr,"Coudn't set rundly\n");
   }

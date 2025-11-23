@@ -131,7 +131,7 @@ int main (int nargs, char ** args)
   }
 
   printf("Using interval %f, turfio_mask 0x%hhx\n", interval, turfio_mask);
-  pueo_daq_config_t cfg = { PUEO_DAQ_CONFIG_DFLT, .fragment_size = fraglen, .debug = debug, .n_recvthreads =nthreads, .max_in_flight = max_in_flight, .turfio_mask = turfio_mask, .frag_src_mask = frag_src_mask };
+  pueo_daq_config_t cfg = { PUEO_DAQ_CONFIG_DFLT, .fragment_size = fraglen, .debug = debug, .n_recvthreads =nthreads, .max_in_flight = max_in_flight, .trigger = {.turfio_mask = turfio_mask }, .frag_src_mask = frag_src_mask };
 
   signal(SIGINT, handler);
 
