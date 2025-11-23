@@ -297,6 +297,7 @@ typedef struct pueo_daq_stats
   bool pps_trig_enabled;
   bool leveltwo_logic;
   bool rf_trig_en;
+  uint32_t trigger_mask;
 } pueo_daq_stats_t;
 
 #define PUEODAQ_STATS_JSON_FORMAT_WITH_PREFIX(prefix)  prefix "\"turfio0_recv_bytes\": %llu,\n"\
@@ -317,15 +318,16 @@ typedef struct pueo_daq_stats
                                                        prefix "\"holdoff: \" %u\n"\
                                                        prefix "\"running\": %s, \"in_reset\": %s,\n"\
                                                        prefix "\"full_err:\": [0x%x,0x%x,0x%x],\n"\
-                                                       prefix "\"turf_err\": %s, \"surf_err\": %s, \"pps_enabled\": %s\n"\
-                                                       prefix "\"leveltwo_logic\": %s, \"rf_trig_en\": %s\n"
+                                                       prefix "\"turf_err\": %s, \"surf_err\": %s, \"pps_enabled\": %s,\n"\
+                                                       prefix "\"leveltwo_logic\": %s, \"rf_trig_en\": %s,\n"\
+                                                       prefix "\"trigger_mask\": 0x%x"
 
 #define PUEODAQ_STATS_JSON_FORMAT PUEODAQ_STATS_JSON_FORMAT_WITH_PREFIX("  ")
 
 #define PUEODAQ_STATS_VALS(s)  4ull*s.turfio_words_recv[0], 4ull*s.turfio_words_recv[1], 4ull*s.turfio_words_recv[2], 4ull*s.turfio_words_recv[3],\
        	8ull*s.qwords_sent, s.events_sent, s.trigger_count, s.current_second, s.last_pps, s.llast_pps, s.pps_trig_offset, s.last_dead, s.llast_dead, \
 	s.panic_count, s.occupancy, s.ack_count, s.allow_count, s.holdoff, s.running ? "true" : "false" , s.in_reset ? "true" : "false", s.full_err[0], s.full_err[1], s.full_err[2],\
-  s.turf_err ? "true" : "false", s.surf_err ? "true" : "false", s.pps_trig_enabled ? "true" : "false", s.leveltwo_logic ? "\"OR\"" : "\"AND\"", s.rf_trig_en  ? "true" : "false"
+  s.turf_err ? "true" : "false", s.surf_err ? "true" : "false", s.pps_trig_enabled ? "true" : "false", s.leveltwo_logic ? "\"OR\"" : "\"AND\"", s.rf_trig_en  ? "true" : "false", s.trigger_mask
 
 
 int pueo_daq_get_stats(pueo_daq_t * daq,  pueo_daq_stats_t * stats);

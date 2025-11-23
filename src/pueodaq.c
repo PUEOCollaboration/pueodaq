@@ -1680,7 +1680,8 @@ int pueo_daq_get_stats(pueo_daq_t * daq, pueo_daq_stats_t * st)
       read_turf_reg(daq, &turf_event.full_error0, &st->full_err[0])||
       read_turf_reg(daq, &turf_event.full_error1, &st->full_err[1])||
       read_turf_reg(daq, &turf_event.full_error2, &st->full_err[2])||
-      read_turf_reg(daq, &turf_trig.pps_reg, &pps_reg)
+      read_turf_reg(daq, &turf_trig.pps_reg, &pps_reg) ||
+      read_turf_reg(daq, &turf_trig.mask, &st->trigger_mask)
      )
   {
     return 1;
