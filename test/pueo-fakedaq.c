@@ -166,7 +166,7 @@ int main (int nargs, char ** args)
 
   pueo_daq_start(daq);
 
-  pueo_daq_dump(daq,stdout, 0);
+  pueo_daq_dump(daq,stdout, debug > 0 ? PUEODAQ_DUMP_INCLUDE_L1: 0);
   int count = 0;
   struct timespec start;
   clock_gettime(CLOCK_MONOTONIC, &start);
@@ -181,7 +181,7 @@ int main (int nargs, char ** args)
     if (now.tv_sec - last_stats.tv_sec + 1e-9 * (now.tv_nsec - last_stats.tv_nsec)  > stats_interval)
     {
       memcpy(&last_stats, &now, sizeof(now));
-      pueo_daq_dump(daq,stdout,0);
+      pueo_daq_dump(daq,stdout,debug > 0 ? PUEODAQ_DUMP_INCLUDE_L1 : 0);
     }
     usleep(1e6*interval);
   }
