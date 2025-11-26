@@ -162,6 +162,7 @@ int main (int nargs, char ** args)
       }
     }
   }
+  pueo_daq_set_L2_mask(daq,0x0ffffff);
 
   pueo_daq_start(daq);
 
