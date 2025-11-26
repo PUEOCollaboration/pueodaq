@@ -1376,7 +1376,7 @@ void * reader_thread(void *arg)
     {
       int surf_header_size = frag->buf[frag->buf[0]];
       ev->header_size =  (surf_header_size + frag->buf[0] +1)*2;
-      ev->nsamples = (ev->nbytes_expected -  ev->header_size - sizeof(turf_fraghdr_t)) / PUEODAQ_NCHAN / 2;
+      ev->nsamples = (ev->nbytes_expected -  ev->header_size) / PUEODAQ_NCHAN / 2;
     }
 
 
@@ -1478,7 +1478,7 @@ int pueo_daq_get_event(pueo_daq_t * daq, pueo_daq_event_data_t * dest)
 
   //only support this for now, could handle truncated easily, adjustable with a bit more difficulty.
   assert (ev->nsamples == PUEODAQ_NSAMP);
-  if (daq->cfg.debug) printf("Header size: %hu\n", ev->header_size);
+  if (daq->cfg.debug) printf("Header size: %hu, nbytes_expected: %u\n", ev->header_size, ev->nbytes_expected);
 
   if (dest)
   {
@@ -1489,7 +1489,7 @@ int pueo_daq_get_event(pueo_daq_t * daq, pueo_daq_event_data_t * dest)
 
 
           void * p = &dest->waveform_data[0][0];
-          p = mempcpy(p, fragment_get(daq,ev->fragments[0])->buf + ev->header_size, daq->cfg.fragment_size-ev->header_size);
+          p = mempcpy(p, fragment_get(daq,ev->fragments[0])->buf + ev->header_size/2, daq->cfg.fragment_size-ev->header_size);
           for (int i = 1; i < ev->nfragments_expected; i++)
           {
               p = mempcpy( p, fragment_get(daq,ev->fragments[i])->buf, i == ev->nfragments_expected - 1 ? last_fragment_size : daq->cfg.fragment_size);
