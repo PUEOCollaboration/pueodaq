@@ -126,7 +126,7 @@ DEF(cratepps_en,          BF (BASE, 0x8, 0, 1))  \
 DEF(rundly,               BF (BASE, 0x0, 8, 4))  \
 DEF(mask,                 REG(BASE,0x100))  \
 DEF(latency,              BF (BASE,0x104,0,16))  \
-DEF(offset,               BF (BASE,0x104,0,16))  \
+DEF(offset,               BF (BASE,0x104,16,16))  \
 DEF(pps_reg,              REG(BASE,0x108))\
 DEF(pps_trig_enable,      BF (BASE,0x108,0,1))   \
 DEF(pps_offset,           BF (BASE,0x108,16,16)) \
