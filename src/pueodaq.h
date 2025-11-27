@@ -248,6 +248,8 @@ int pueo_daq_reset(pueo_daq_t * daq);
 int pueo_daq_write(pueo_daq_t *daq, uint32_t wraddr, uint32_t data);
 int pueo_daq_read(pueo_daq_t *daq, uint32_t rdaddr, uint32_t * data);
 
+int pueo_daq_setup_photoshutter(pueo_daq_t * daq, bool enable, uint16_t prescale);
+
 typedef struct pueo_daq_many_setup
 {
   unsigned N; //number to read
