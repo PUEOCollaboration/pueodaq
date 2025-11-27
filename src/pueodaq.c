@@ -1823,6 +1823,7 @@ int pueo_daq_set_L1_thresholds(pueo_daq_t * daq, int surf_link, int surf_slot, c
     }
 #endif
 
+    write_surf_reg(daq, SURF(surf_link,surf_slot), &surf_L1.threshold_update_request, 1);
 
   }
   return 0;
@@ -1983,8 +1984,8 @@ int pueo_daq_set_L2_mask_by_2phi(pueo_daq_t * daq, uint16_t H, uint16_t V)
   uint32_t mask = (H & 0xfff) | ((V & 0xfff) <<12);
 
   //LF
-  mask |= (H & 0x10000) << 24;
-  mask |= (V & 0x10000) << 25;
+  mask |= (!!(H & 0x1000)) << 24;
+  mask |= (!!(V & 0x1000)) << 25;
 
   return pueo_daq_set_L2_mask(daq, mask);
 }
