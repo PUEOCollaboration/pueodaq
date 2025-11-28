@@ -14,7 +14,7 @@ void handler(int signum)
   stop = 1;
 }
 
-double interval = 1;
+double interval = 0;
 double stats_interval =5;
 uint8_t turfio_mask = 0;
 int debug = 1;
@@ -26,6 +26,8 @@ int fraglen = 1024;
 int frag_src_mask = 0x3f;
 int last_idx = 0;
 int maybe_thresholds = -1;
+bool enable_pps = false;
+int pps_offset = 0;
 
 int ready(pueo_daq_t * daq, uint32_t idx)
 {
@@ -53,7 +55,7 @@ int ready(pueo_daq_t * daq, uint32_t idx)
 
 void usage()
 {
-  printf("pueo-fakedaq [-I SOFTTRIGINTERVAL=1.0] [-T TURFIOMASK=0x0] [-L FRAGLEN=1024] [-t NUMRDRTHREADS=1] [-H set all thresholds to value] [-M MAXINFLIGHT=32] [-o OUTDIR=/tmp] [-d DEBUGLEVEL=1] [-STATSINTERVAL = 5] [-h] [-0]\n"); 
+  printf("pueo-fakedaq [-I SOFTTRIGINTERVAL=1.0] [-T TURFIOMASK=0x0] [-L FRAGLEN=1024] [-t NUMRDRTHREADS=1] [-p offset enable pps with offset] [-H set all thresholds to value] [-M MAXINFLIGHT=32] [-o OUTDIR=/tmp] [-d DEBUGLEVEL=1] [-STATSINTERVAL = 5] [-h] [-0]\n"); 
   printf("   -0 means throw everything away (good for benchmarks)\n");
 
 }
@@ -93,6 +95,11 @@ int main (int nargs, char ** args)
       {
         int maybe_nthreads = atoi(args[++i]);
         if (maybe_nthreads  > 0) nthreads = maybe_nthreads;
+      }
+      else if (!strcmp(args[i],"-p") && !last)
+      {
+          enable_pps = true;
+          pps_offset = atoi(args[++i]);
       }
       else if (!strcmp(args[i],"-F") && !last)
       {
@@ -141,7 +148,7 @@ int main (int nargs, char ** args)
 
   pueo_daq_register_ready_callback(daq, ready);
 
-  pueo_daq_pps_setup(daq,true,0);
+  pueo_daq_pps_setup(daq,enable_pps,pps_offset);
   pueo_daq_enable_rf_readout(daq,true);
 
   if (maybe_thresholds > 0)
@@ -162,7 +169,7 @@ int main (int nargs, char ** args)
       }
     }
   }
-  pueo_daq_set_L2_mask(daq,0x0ffffff);
+  pueo_daq_set_L2_mask(daq,0x3ffffff);
 
   pueo_daq_start(daq);
 
@@ -175,15 +182,23 @@ int main (int nargs, char ** args)
   while(!stop)
   {
     struct timespec now;
-    printf("Sending soft trig %d\n", count++);
-    pueo_daq_soft_trig(daq);
     clock_gettime(CLOCK_MONOTONIC, &now);
+    if (interval)
+    {
+      printf("Sending soft trig %d\n", count++);
+      pueo_daq_soft_trig(daq);
+      usleep(1e6*interval);
+    }
+    else
+    {
+      usleep(10e6);
+    }
+
     if (now.tv_sec - last_stats.tv_sec + 1e-9 * (now.tv_nsec - last_stats.tv_nsec)  > stats_interval)
     {
-      memcpy(&last_stats, &now, sizeof(now));
-      pueo_daq_dump(daq,stdout,debug > 0 ? PUEODAQ_DUMP_INCLUDE_L1 : 0);
+       memcpy(&last_stats, &now, sizeof(now));
+       pueo_daq_dump(daq,stdout,debug > 0 ? PUEODAQ_DUMP_INCLUDE_L1 : 0);
     }
-    usleep(1e6*interval);
   }
 
   struct timespec stop;
