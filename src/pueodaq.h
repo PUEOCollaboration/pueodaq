@@ -87,8 +87,11 @@ typedef struct pueo_daq_config
   struct
   {
     uint32_t turfio_mask : 4; //note that 0 means working here, opposite of how I would define it
+    bool apply_offset;
     uint16_t offset;
+    bool apply_latency;
     uint16_t latency;
+    bool apply_rundly;
     uint8_t  rundly;
   } trigger;
 
@@ -169,7 +172,7 @@ typedef int (*pueo_daq_event_ready_callback_t)(pueo_daq_t * daq, uint32_t idx);
   },                                        \
   .timeout = {.tv_sec = 0, .tv_nsec = 1e8 }, \
   .max_attempts = 10, .debug = false,\
-  .trigger = { .turfio_mask = 0x0, .offset = 39, .latency = 0, .rundly = 3 }
+  .trigger = { .turfio_mask = 0x0, .apply_offset = true, .offset = 55 }
 
 
 
