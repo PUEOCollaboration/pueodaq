@@ -172,7 +172,7 @@ typedef int (*pueo_daq_event_ready_callback_t)(pueo_daq_t * daq, uint32_t idx);
   },                                        \
   .timeout = {.tv_sec = 0, .tv_nsec = 1e8 }, \
   .max_attempts = 10, .debug = false,\
-  .trigger = { .turfio_mask = 0x0, .apply_offset = true, .offset = 55 }
+  .trigger = { .turfio_mask = 0x0, .apply_offset = true, .offset = 36}
 
 
 
