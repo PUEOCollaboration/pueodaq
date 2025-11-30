@@ -3,7 +3,7 @@ R__LOAD_LIBRARY(build/libpueodaq.so);
 
 #include "../src/pueodaq.h" 
 
-void fakedaq_plot(int index, bool pdf = false, const char * format = "/tmp/fakedaq_%05d.dat")
+void fakedaq_plot(int index = 0, bool pdf = false, const char * format = "/tmp/fakedaq_%05d.dat")
 {
   gStyle->SetLineScalePS(1);
 
@@ -21,6 +21,9 @@ void fakedaq_plot(int index, bool pdf = false, const char * format = "/tmp/faked
     c->Divide(4,2,0.001,0.001);
     for (int ichan = 0; ichan < 8; ichan++)
     {
+
+
+
       c->cd(ichan+1);
       TGraph * g = new TGraph(PUEODAQ_NSAMP);
       int idx = isurf*8+ichan;
@@ -43,6 +46,7 @@ void fakedaq_plot(int index, bool pdf = false, const char * format = "/tmp/faked
     if (pdf) c->SaveAs(Form("/tmp/fakedaq_%05d.pdf%s", index, isurf == 0 ? "(" : isurf == 27 ? ")" : ""));
     c->Show();
   }
+  printf("\n");
 
 }
 
