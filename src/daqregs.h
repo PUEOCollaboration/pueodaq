@@ -278,7 +278,8 @@ REG_GROUP(surf_agc, 0x4000, SURFAGC_REGS);
   DEF( inc_comp_casc,    REG (BASE,0x0C))\
   DEF( pole_f_fir_casc,  REG (BASE,0x10))\
   DEF( pole_g_fir_casc,  REG (BASE,0x14))\
-  DEF( g_in_f_fir,       REG (BASE,0x18))
+  DEF( f_in_g_fir,       REG (BASE,0x18))\
+  DEF( g_in_f_fir,       REG (BASE,0x1c))
 
 REG_GROUP(surf_bq, 0x6000, SURFBQ_REGS);
 
@@ -341,6 +342,7 @@ read_turfio_reg(pueo_daq_t * daq, uint8_t link, const reg_t * reg, uint32_t * va
 
 uint64_t __attribute((nonnull))
 read_dna(pueo_daq_t * daq, uint32_t device_base, const reg_t * reg);
+
 
 #pragma GCC visibility pop
 

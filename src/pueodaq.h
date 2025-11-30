@@ -45,6 +45,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include "pueo-biquads.h"
 #include <time.h>
 #include <netinet/in.h>
 
@@ -419,6 +420,11 @@ typedef struct pueo_L2_stat
 
 int pueo_daq_L1_stat_dump(FILE *f, const pueo_L1_stat_t * s);
 int pueo_daq_L2_stat_dump(FILE *f, const pueo_L2_stat_t * s);
+
+int pueo_daq_set_biquad(pueo_daq_t *daq, int surf_link, int surf_slot, int channel, int bq_idx,  const pueo_biquad_t *bq);
+int pueo_daq_set_all_biquads(pueo_daq_t *daq, int bq_idx, const pueo_biquad_t *bq);
+int pueo_daq_bypass_biquad(pueo_daq_t *daq, int surf_link, int surf_slot, int channel, int bq_idx);
+int pueo_daq_bypass_all_biquads(pueo_daq_t *daq, int ibq);
 
 
 int pueo_daq_read_L1_stat(pueo_daq_t * daq, int surf_link, int surf_slot, pueo_L1_stat_t * stat);
