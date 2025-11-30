@@ -100,20 +100,25 @@ typedef struct pueo_daq_config
 /** Opaque handle to DAQ*/
 typedef struct pueo_daq pueo_daq_t;
 
+
+
 typedef union pueo_daq_event_header
 {
    struct
    {
-     uint16_t header_words_m1; // number of header words after this one
-     uint16_t header_version;
-     uint32_t event_number;
-     uint32_t event_second;
-     uint32_t event_time;
-     uint32_t last_pps;
-     uint32_t llast_pps;
-     uint32_t trigger_meta[4];
-     uint16_t reserved[34];
-     uint16_t tfio_mask :4;
+     uint16_t header_words_m1; //0x0 number of header words after this one
+     uint16_t header_version;  //
+     uint32_t event_number;  //0x4
+     uint32_t event_second;  //0x8
+     uint32_t event_time;    //0xc
+     uint32_t last_pps;      //0x10
+     uint32_t llast_pps;     //0x14
+     uint8_t trigger_meta[32]; //0x18
+     uint32_t current_dead;   //0x38
+     uint32_t last_dead;      //0x3c
+     uint32_t llast_dead;     //0x40
+     uint8_t reserved[56];   //0x44
+     uint16_t tfio_mask :4;  //0x7c
      uint16_t tid : 12;
      uint16_t surf_header_words;
      uint64_t transposed_surf_headers[4];
@@ -132,13 +137,22 @@ typedef union pueo_daq_event_header
   "{\n  \"header_words\": %u,\n  \"header_version\":  %hu,\n"\
   "  \"event_number\": %u,\n  \"event_second\":  %u,\n"\
   "  \"event_time\": %u,\n  \"last_pps\":  %u,\n"\
-  "  \"llast_pps\": %u,\n  \"trigger_meta\":  [%u,%u,%u,%u],\n"\
-  "  \"rfio_mask\": 0x%x,\n  \"tid\":  0x%x,\n"\
+  "  \"llast_pps\": %u,\n  \"trigger_meta\":  [\n   %hhX,%hhX,%hhX,%hhX,%hhX,%hhX,%hhX,%hhX,\n   %hhX,%hhX,%hhX,%hhX,%hhX,%hhX,%hhX,%hhX,\n   %hhX,%hhX,%hhX,%hhX,%hhX,%hhX,%hhX,%hhX,\n   %hhX,%hhX,%hhX,%hhX,%hhX,%hhX,%hhX,%hhX],\n"\
+  "  \"current_dead\": %u,\n \"last_dead\": %u,\n \"llast_dead\": %u,\n"\
+  "  \"tfio_mask\": 0x%x,\n  \"tid\":  0x%x,\n"\
   "  \"surf_header_words\": %hu,\n  \"transposed_surf_headers\":  [0x%llx, 0x%llx, 0x%llx, 0x%llx]\n}\n"
 
 #define PUEO_DAQ_EVENT_HEADER_VALUES(HDR)\
   HDR.vals.header_words_m1 + 1, HDR.vals.header_version, HDR.vals.event_number, HDR.vals.event_second, HDR.vals.event_time, HDR.vals.last_pps, HDR.vals.llast_pps,\
-  HDR.vals.trigger_meta[0], HDR.vals.trigger_meta[1], HDR.vals.trigger_meta[2], HDR.vals.trigger_meta[3], HDR.vals.tfio_mask, HDR.vals.tid, HDR.vals.surf_header_words,\
+  HDR.vals.trigger_meta[0], HDR.vals.trigger_meta[1], HDR.vals.trigger_meta[2], HDR.vals.trigger_meta[3],\
+  HDR.vals.trigger_meta[4], HDR.vals.trigger_meta[5], HDR.vals.trigger_meta[6], HDR.vals.trigger_meta[7],\
+  HDR.vals.trigger_meta[8], HDR.vals.trigger_meta[9], HDR.vals.trigger_meta[10], HDR.vals.trigger_meta[11],\
+  HDR.vals.trigger_meta[12], HDR.vals.trigger_meta[13], HDR.vals.trigger_meta[14], HDR.vals.trigger_meta[15],\
+  HDR.vals.trigger_meta[16], HDR.vals.trigger_meta[17], HDR.vals.trigger_meta[18], HDR.vals.trigger_meta[19],\
+  HDR.vals.trigger_meta[20], HDR.vals.trigger_meta[21], HDR.vals.trigger_meta[22], HDR.vals.trigger_meta[23],\
+  HDR.vals.trigger_meta[24], HDR.vals.trigger_meta[25], HDR.vals.trigger_meta[26], HDR.vals.trigger_meta[27],\
+  HDR.vals.trigger_meta[28], HDR.vals.trigger_meta[29], HDR.vals.trigger_meta[30], HDR.vals.trigger_meta[31],\
+  HDR.vals.current_dead, HDR.vals.last_dead, HDR.vals.llast_dead, HDR.vals.tfio_mask, HDR.vals.tid, HDR.vals.surf_header_words,\
   HDR.vals.transposed_surf_headers[0], HDR.vals.transposed_surf_headers[1], HDR.vals.transposed_surf_headers[2], HDR.vals.transposed_surf_headers[3]
 
 typedef struct pueo_daq_event_data
@@ -295,6 +309,7 @@ typedef struct pueo_daq_stats
   uint32_t completion_count;
   uint16_t allow_count;
   uint16_t holdoff;
+  uint16_t offset;
   uint16_t pps_trig_offset;
   bool running;
   bool in_reset;
@@ -322,6 +337,7 @@ typedef struct pueo_daq_stats
                                                        prefix "\"ack_count: \" %u\n"\
                                                        prefix "\"allow_count: \" %u\n"\
                                                        prefix "\"holdoff: \" %u\n"\
+                                                       prefix "\"offset: \" %u\n"\
                                                        prefix "\"running\": %s, \"in_reset\": %s,\n"\
                                                        prefix "\"full_err:\": [0x%x,0x%x,0x%x],\n"\
                                                        prefix "\"turf_err\": %s, \"surf_err\": %s, \"pps_enabled\": %s,\n"\
@@ -332,7 +348,7 @@ typedef struct pueo_daq_stats
 
 #define PUEODAQ_STATS_VALS(s)  4ull*s.turfio_words_recv[0], 4ull*s.turfio_words_recv[1], 4ull*s.turfio_words_recv[2], 4ull*s.turfio_words_recv[3],\
        	8ull*s.qwords_sent, s.events_sent, s.trigger_count, s.current_second, s.last_pps, s.llast_pps, s.pps_trig_offset, s.last_dead, s.llast_dead, \
-	s.panic_count, s.occupancy, s.ack_count, s.allow_count, s.holdoff, s.running ? "true" : "false" , s.in_reset ? "true" : "false", s.full_err[0], s.full_err[1], s.full_err[2],\
+	s.panic_count, s.occupancy, s.ack_count, s.allow_count, s.holdoff, s.offset,  s.running ? "true" : "false" , s.in_reset ? "true" : "false", s.full_err[0], s.full_err[1], s.full_err[2],\
   s.turf_err ? "true" : "false", s.surf_err ? "true" : "false", s.pps_trig_enabled ? "true" : "false", s.leveltwo_logic ? "\"OR\"" : "\"AND\"", s.rf_trig_en  ? "true" : "false", s.trigger_mask
 
 
