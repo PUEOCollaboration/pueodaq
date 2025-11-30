@@ -266,7 +266,7 @@ int pueo_daq_reset(pueo_daq_t * daq);
 int pueo_daq_write(pueo_daq_t *daq, uint32_t wraddr, uint32_t data);
 int pueo_daq_read(pueo_daq_t *daq, uint32_t rdaddr, uint32_t * data);
 
-int pueo_daq_setup_photoshutter(pueo_daq_t * daq, bool enable, uint16_t prescale);
+int pueo_daq_setup_photoshutter(pueo_daq_t * daq, bool enable, uint8_t prescale);
 
 typedef struct pueo_daq_many_setup
 {
@@ -403,7 +403,6 @@ typedef struct pueo_L1_stat
     uint64_t scaler_bank_before : 1;
     uint64_t scaler_bank_after : 1;
   } beams[PUEO_L1_BEAMS];
-
   struct timespec readout_time_start;
   uint16_t ms_elapsed;
   uint8_t surf_link : 2;

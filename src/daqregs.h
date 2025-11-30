@@ -144,6 +144,7 @@ DEF(leveltwo_logic,       BF (BASE, 0x118, 24, 1)) \
 DEF(rf_trig_en,           BF (BASE, 0x118, 25, 1)) \
 DEF(trigger_count,        REG_RO(BASE, 0x11c))\
 DEF(ext_prescale,         REG(BASE, 0x120))\
+DEF(photo_reg,            REG(BASE, 0x124))\
 DEF(photo_prescale,       BF(BASE, 0x124, 0, 8))\
 DEF(photo_enable,         BF(BASE, 0x124, 16, 1))
 

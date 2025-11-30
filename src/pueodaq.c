@@ -2001,9 +2001,11 @@ int pueo_daq_set_L2_mask_by_2phi(pueo_daq_t * daq, uint16_t H, uint16_t V)
 
 
 
-int pueo_daq_setup_photoshutter(pueo_daq_t * daq, bool enable, uint16_t prescale)
+int pueo_daq_setup_photoshutter(pueo_daq_t * daq, bool enable, uint8_t prescale)
 {
-  return write_turf_reg(daq, &turf_trig.photo_prescale, prescale) || write_turf_reg(daq, &turf_trig.photo_enable, enable);
+  uint32_t reg = prescale;
+  if (enable) reg |= (1 <<16);
+  return write_turf_reg(daq, &turf_trig.photo_reg, reg);
 }
 
 
