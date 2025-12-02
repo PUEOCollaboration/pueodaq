@@ -261,6 +261,10 @@ struct pueo_daq
     PUEODAQ_STOPPING
   } state;
 
+  pueo_L2_stat_t cached_l2;
+  pueo_L1_stat_t cached_l1[4][7];
+  pueo_daq_scalers_t cached_scalers;
+
 };
 
 
@@ -1659,7 +1663,7 @@ int pueo_daq_soft_trig(pueo_daq_t * daq)
 
 int pueo_daq_enable_rf_readout(pueo_daq_t * daq, bool enable)
 {
-  return write_turf_reg(daq, &turf_trig.rf_trig_en, enable);
+   return write_turf_reg(daq, &turf_trig.rf_trig_en, enable);
 }
 
 
@@ -1721,7 +1725,12 @@ int pueo_daq_get_scalers(pueo_daq_t * daq, pueo_daq_scalers_t* s)
 
 
   clock_gettime(CLOCK_REALTIME, &s->readout_time);
-  return read_incrementing_regs(daq, 32, 0, &turf_scalers.scaler_base, s->scalers.v);
+  int ret =  read_incrementing_regs(daq, 32, 0, &turf_scalers.scaler_base, s->scalers.v);
+  if (daq->cfg.max_age)
+  {
+    memcpy(&daq->cached_scalers, s, sizeof(*s));
+  }
+  return ret;
 }
 
 int pueo_daq_read_L2_stat(pueo_daq_t * daq, pueo_L2_stat_t* s)
@@ -1729,7 +1738,22 @@ int pueo_daq_read_L2_stat(pueo_daq_t * daq, pueo_L2_stat_t* s)
   if (!s) return -1;
 
   clock_gettime(CLOCK_REALTIME, &s->readout_time_start);
-  return read_incrementing_regs(daq, 24, 0, &turf_scalers.leveltwo_base, (uint32_t*) s->Hscalers);
+  int ret =  read_incrementing_regs(daq, 24, 0, &turf_scalers.leveltwo_base, (uint32_t*) s->Hscalers);
+
+  if (daq->cfg.max_age)
+  {
+    memcpy(&daq->cached_l2, s, sizeof(*s));
+  }
+  return ret;
+  /*  non incrementing version here 
+  reg_t reg = turf_scalers.leveltwo_base;
+  for (int i = 0; i < 24; i++)
+  {
+    if (read_turf_reg(daq, &reg, &s->Hscalers[i])) return -1;
+    reg.addr+=4;
+  }
+  */
+
 }
 
 
@@ -1774,10 +1798,10 @@ int pueo_daq_L1_stat_dump(FILE *f, const pueo_L1_stat_t * s)
 {
    int ret = 0;
    ret+= fprintf(f,"L1 stat dump for SURF Link %u, slot %u @%lu.%09ld (dur %hu ms):\n" , s->surf_link, s->surf_slot, s->readout_time_start.tv_sec, s->readout_time_start.tv_nsec, s->ms_elapsed);
-   ret+= printf("==BM=====THRESHOLD/PSEUDOTHRESHOLD====== SCALER/PSEUDOSCALER====INMASK==BANK\n");
+   ret+= fprintf(f,"==BM=====THRESHOLD/PSEUDOTHRESHOLD====== SCALER/PSEUDOSCALER====INMASK==BANK\n");
    for (int i = 0; i < PUEO_L1_BEAMS; i++)
    {
-      ret+= printf("  %02d    %06d/%06d         %5d/%5d          %c   %hhu:%hhu\n", i, s->beams[i].threshold, s->beams[i].pseudothreshold, s->beams[i].scaler, s->beams[i].pseudoscaler, s->beams[i].in_beam_mask ? 'x' : ' ', (uint8_t) s->beams[i].scaler_bank_before,(uint8_t) s->beams[i].scaler_bank_after);
+      ret+= fprintf(f,"  %02d    %06d/%06d         %5d/%5d          %c   %hhu:%hhu\n", i, s->beams[i].threshold, s->beams[i].pseudothreshold, s->beams[i].scaler, s->beams[i].pseudoscaler, s->beams[i].in_beam_mask ? 'x' : ' ', (uint8_t) s->beams[i].scaler_bank_before,(uint8_t) s->beams[i].scaler_bank_after);
    }
    return ret;
 }
@@ -1785,12 +1809,16 @@ int pueo_daq_L1_stat_dump(FILE *f, const pueo_L1_stat_t * s)
 int pueo_daq_L2_stat_dump(FILE *f, const pueo_L2_stat_t * s)
 {
    int ret = 0;
+   uint32_t hsum = 0, vsum = 0;
    ret+= fprintf(f,"L2 stat dump @%lu.%09ld\n" ,s->readout_time_start.tv_sec, s->readout_time_start.tv_nsec);
-   ret+= printf("==SEMISECTOR=====HSCAL======VSCAL==\n");
+   ret+= fprintf(f,"==SEMISECTOR=====HSCAL======VSCAL==\n");
    for (int i = 0; i < 12; i++)
    {
-      ret+= printf("  %02d    %06d    %06d\n ", i, s->Hscalers[i], s->Vscalers[i]);
+      ret+= fprintf(f,"  %02d    %06d    %06d\n ", i, s->Hscalers[i], s->Vscalers[i]);
+      hsum += s->Hscalers[i];
+      vsum += s->Vscalers[i];
    }
+   ret += fprintf(f,"==TOTALS:  H: %u, V: %u, all: %u\n", hsum, vsum, hsum+vsum);
    return ret;
 }
 
@@ -1902,6 +1930,11 @@ do_end:
     stat->flags = 0xff;
     fprintf(stderr,"problem in pueo_daq_read_L1_stat (%d)\n", r);
   }
+  else if (daq->cfg.max_age)
+  {
+    memcpy(&daq->cached_l1[link][slot], stat, sizeof(*stat));
+  }
+
 
   return r;
 }
