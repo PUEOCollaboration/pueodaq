@@ -33,6 +33,9 @@ typedef union fpga_id
 #define FPGAID(x) (fpga_id_t) { .u = ntohl(x) }
 
 
+#define DELTA_T(now, then)  ( ( now.tv_sec - then.tv_sec) + 1e-9 * (now.tv_nsec - then.tv_nsec))
+
+
 const fpga_id_t the_turfid = { .c = {'T','U','R','F'} };
 const fpga_id_t the_surfid = { .c = {'S','U','R','F'} };
 const fpga_id_t the_tfioid = { .c = {'T','F','I','O'} };
@@ -1724,7 +1727,15 @@ int pueo_daq_get_scalers(pueo_daq_t * daq, pueo_daq_scalers_t* s)
   if (!s) return -1;
 
 
-  clock_gettime(CLOCK_REALTIME, &s->readout_time);
+  struct timespec now;
+  clock_gettime(CLOCK_REALTIME, &now);
+  if (DELTA_T(now, daq->cached_scalers.readout_time)  < daq->cfg.max_age)
+  {
+    memcpy(s,&daq->cached_scalers, sizeof(*s));
+    return 0;
+  }
+  memcpy(&s->readout_time, &now, sizeof(now));
+
   int ret =  read_incrementing_regs(daq, 32, 0, &turf_scalers.scaler_base, s->scalers.v);
   if (daq->cfg.max_age)
   {
@@ -1737,7 +1748,16 @@ int pueo_daq_read_L2_stat(pueo_daq_t * daq, pueo_L2_stat_t* s)
 {
   if (!s) return -1;
 
-  clock_gettime(CLOCK_REALTIME, &s->readout_time_start);
+  struct timespec now;
+  clock_gettime(CLOCK_REALTIME, &now);
+  if (DELTA_T(now, daq->cached_l2.readout_time_start)  < daq->cfg.max_age)
+  {
+    memcpy(s,&daq->cached_l2, sizeof(*s));
+    return 0;
+  }
+
+  memcpy(&s->readout_time_start, &now, sizeof(now));
+
   int ret =  read_incrementing_regs(daq, 24, 0, &turf_scalers.leveltwo_base, (uint32_t*) s->Hscalers);
 
   if (daq->cfg.max_age)
@@ -1803,6 +1823,13 @@ int pueo_daq_L1_stat_dump(FILE *f, const pueo_L1_stat_t * s)
    {
       ret+= fprintf(f,"  %02d    %06d/%06d         %5d/%5d          %c   %hhu:%hhu\n", i, s->beams[i].threshold, s->beams[i].pseudothreshold, s->beams[i].scaler, s->beams[i].pseudoscaler, s->beams[i].in_beam_mask ? 'x' : ' ', (uint8_t) s->beams[i].scaler_bank_before,(uint8_t) s->beams[i].scaler_bank_after);
    }
+
+   ret += fprintf(f,"AGC SCALE/OFFS: ");
+   for (int i = 0; i < PUEO_NSURF_CHAN; i++)
+   {
+     ret+= fprintf(f,"[%d:%x/%x] ", i,  s->agc_scale[i], s->agc_offset[i]);
+   }
+   fprintf(f,"\n");
    return ret;
 }
 
@@ -1877,10 +1904,19 @@ int pueo_daq_L1_masks(pueo_daq_t * daq, int link, int slot, uint64_t beam_mask)
 #ifndef PUEODAQ_L1_NOMULTIREAD
 int pueo_daq_read_L1_stat(pueo_daq_t * daq, int link, int slot, pueo_L1_stat_t * stat)
 {
+  struct timespec now;
+  clock_gettime(CLOCK_REALTIME, &now);
+  if (DELTA_T(now, daq->cached_l1[link][slot].readout_time_start)  < daq->cfg.max_age)
+  {
+    memcpy(stat,&daq->cached_l1[link][slot], sizeof(*stat));
+    return 0;
+  }
+
+
   surf_t surf = SURF(link,slot);
   int r = 0;
   int i = 0;
-  clock_gettime(CLOCK_REALTIME, &stat->readout_time_start);
+  memcpy(&stat->readout_time_start, &now, sizeof(now));
   stat->surf_link = link;
   stat->surf_slot = slot;
 
@@ -1896,17 +1932,28 @@ int pueo_daq_read_L1_stat(pueo_daq_t * daq, int link, int slot, pueo_L1_stat_t *
   complete_mask <<=18;
   complete_mask |= (lower_mask  & 0x3ffff);
 
-  static __thread uint32_t thresholds[PUEO_L1_BEAMS]; 
-  static __thread uint32_t pseudo_thresholds[PUEO_L1_BEAMS]; 
-  static __thread uint16_t scalers[PUEO_L1_BEAMS][2]; 
+  static __thread uint32_t thresholds[PUEO_L1_BEAMS];
+  static __thread uint32_t pseudo_thresholds[PUEO_L1_BEAMS];
+  static __thread uint16_t scalers[PUEO_L1_BEAMS][2];
 
   uint32_t scaler_bank[2];
+
+
 
   if (read_incrementing_regs(daq, PUEO_L1_BEAMS, SURF_BASE(surf.link, surf.slot),   &surf_L1.threshold_base, thresholds)) { r = 1; goto do_end;}
   if (read_incrementing_regs(daq, PUEO_L1_BEAMS, SURF_BASE(surf.link, surf.slot),   &surf_L1.pseudothreshold_base, pseudo_thresholds)) { r = 1; goto do_end;}
   if (read_surf_reg(daq, surf, &surf_L1.current_scaler_bank, &scaler_bank[0])) { r = 1; goto do_end; }
   if (read_incrementing_regs(daq, PUEO_L1_BEAMS, SURF_BASE(surf.link, surf.slot),   &surf_L1.scaler_base, (uint32_t*) scalers)) { r = 1; goto do_end;}
   if (read_surf_reg(daq, surf, &surf_L1.current_scaler_bank, &scaler_bank[1])) { r = 1; goto do_end; }
+
+  for (int i = 0; i < PUEO_NSURF_CHAN; i++)
+  {
+    uint32_t scale, offset;
+    read_based_reg(daq, SURF_BASE(surf.link, surf.slot)  + i * 1024, &surf_agc.scale, &scale);
+    read_based_reg(daq, SURF_BASE(surf.link, surf.slot)  + i * 1024, &surf_agc.offset, &offset);
+    stat->agc_scale[i] = scale;
+    stat->agc_offset[i] = offset;
+  }
 
 
   for (i = 0; i < PUEO_L1_BEAMS; i++)

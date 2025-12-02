@@ -97,6 +97,9 @@ typedef struct pueo_daq_config
   } trigger;
 
 
+  // If non-zero, will respond with cached L1 or L2 or scaler values if they exist to prevent rereading too fast
+  double max_age;
+
 } pueo_daq_config_t;
 /** Opaque handle to DAQ*/
 typedef struct pueo_daq pueo_daq_t;
@@ -391,6 +394,7 @@ int pueo_daq_set_L1_thresholds(pueo_daq_t * daq, int surf_link, int surf_slot, c
 int pueo_daq_set_L1_masks(pueo_daq_t * daq, int surf_link, int surf_slot, uint64_t beam_mask);
 
 #define PUEO_L1_BEAMS 48
+#define PUEO_NSURF_CHAN 8
 typedef struct pueo_L1_stat
 {
   struct
@@ -403,6 +407,8 @@ typedef struct pueo_L1_stat
     uint64_t scaler_bank_before : 1;
     uint64_t scaler_bank_after : 1;
   } beams[PUEO_L1_BEAMS];
+  uint32_t agc_scale[PUEO_NSURF_CHAN];
+  uint16_t agc_offset[PUEO_NSURF_CHAN];
   struct timespec readout_time_start;
   uint16_t ms_elapsed;
   uint8_t surf_link : 2;
