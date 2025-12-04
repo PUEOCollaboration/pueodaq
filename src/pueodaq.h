@@ -389,7 +389,7 @@ typedef struct pueo_daq_scalers
 
 
 int pueo_daq_pps_setup(pueo_daq_t *daq, bool enable, uint16_t offset);
-int pueo_daq_enable_rf_readout(pueo_daq_t * daq, bool enable);
+int pueo_daq_enable_rf_readout(pueo_daq_t * daq, bool enable, bool use_OR_logic);
 
 int pueo_daq_get_scalers(pueo_daq_t * daq, pueo_daq_scalers_t* s);
 int pueo_daq_scalers_dump(FILE *f, const pueo_daq_scalers_t * s);

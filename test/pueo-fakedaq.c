@@ -149,7 +149,7 @@ int main (int nargs, char ** args)
   pueo_daq_register_ready_callback(daq, ready);
 
   pueo_daq_pps_setup(daq,enable_pps,pps_offset);
-  pueo_daq_enable_rf_readout(daq,true);
+  pueo_daq_enable_rf_readout(daq,true,false);
 
   if (maybe_thresholds > 0)
   {

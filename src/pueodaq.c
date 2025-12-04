@@ -1664,9 +1664,11 @@ int pueo_daq_soft_trig(pueo_daq_t * daq)
 }
 
 
-int pueo_daq_enable_rf_readout(pueo_daq_t * daq, bool enable)
+int pueo_daq_enable_rf_readout(pueo_daq_t * daq, bool enable, bool or_logic)
 {
-   return write_turf_reg(daq, &turf_trig.rf_trig_en, enable);
+   return write_turf_reg(daq, &turf_trig.rf_trig_en, enable) ||
+          write_turf_reg(daq, &turf_trig.leveltwo_logic, or_logic);
+    
 }
 
 
