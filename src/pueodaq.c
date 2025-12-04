@@ -1678,6 +1678,7 @@ int pueo_daq_get_stats(pueo_daq_t * daq, pueo_daq_stats_t * st)
   uint32_t running;
   event_count_reg_t counts;
   uint32_t pps_reg = 0;
+  uint32_t offset;
   holdoff_reg_t holdoff;
   if (
       read_turf_reg(daq, &turf_event.ndwords0, &st->turfio_words_recv[0]) ||
@@ -1697,6 +1698,7 @@ int pueo_daq_get_stats(pueo_daq_t * daq, pueo_daq_stats_t * st)
       read_turf_reg(daq, &turf_event.count_reg, &counts.as_uint)||
       read_turf_reg(daq, &turf_trig.holdoff_reg, &holdoff.as_uint)||
       read_turf_reg(daq, &turf_trig.running, &running)||
+      read_turf_reg(daq, &turf_trig.offset, &offset)||
       read_turf_reg(daq, &turf_event.event_in_reset, &in_reset)||
       read_turf_reg(daq, &turf_event.full_error0, &st->full_err[0])||
       read_turf_reg(daq, &turf_event.full_error1, &st->full_err[1])||
@@ -1711,6 +1713,7 @@ int pueo_daq_get_stats(pueo_daq_t * daq, pueo_daq_stats_t * st)
   st->pps_trig_enabled = pps_reg &1;
   st->pps_trig_offset = pps_reg >> 16;
 
+  st->offset = offset;
   st->ack_count = counts.as_count.ack_count;
   st->allow_count = counts.as_count.allow_count;
   st->running = running;
