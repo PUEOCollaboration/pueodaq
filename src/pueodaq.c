@@ -1630,7 +1630,7 @@ void* control_thread(void * arg)
         for (unsigned i = 0; i < num_acks; i++)
         {
           uint16_t addr = acks[i].BIT.ADDR;
-          printf("Sent ack for %hu\n", addr);
+          if (daq->cfg.debug > 1) printf("Sent ack for %hu\n", addr);
           atomic_store(&daq->addr_map[addr],-1); //maybe doesn't need to be atomic?
           atomic_fetch_and(&daq->ack_map[addr/64], ~(1ull << (addr % 64)));
         }
