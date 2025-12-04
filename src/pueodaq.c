@@ -1737,6 +1737,14 @@ int pueo_daq_get_scalers(pueo_daq_t * daq, pueo_daq_scalers_t* s)
   memcpy(&s->readout_time, &now, sizeof(now));
 
   int ret =  read_incrementing_regs(daq, 32, 0, &turf_scalers.scaler_base, s->scalers.v);
+
+  if (ret) return ret;
+
+  // we now have a few extra. If I were smart, I'd read the whole register space at once
+  ret = read_incrementing_regs(daq, 3, 0, &turf_scalers.mie_hvscaler, (uint32_t*)mie_total_H);
+
+  if (ret) return ret; 
+
   if (daq->cfg.max_age)
   {
     memcpy(&daq->cached_scalers, s, sizeof(*s));
@@ -1791,6 +1799,10 @@ int pueo_daq_scalers_dump(FILE *f, const pueo_daq_scalers_t * s)
     ret += fprintf(f,"   TFIO%d: %u %u %u %u %u %u %u\n", i,
                           v[0], v[1], v[2], v[3], v[4], v[5], v[6]);
   }
+
+  ret + = fprintf(f,  "*** MIE Totals  H/V/Sum: %hu/%hu/%hu\n", s->MIE_total_H, s->MIE_total_V, s->MIE_total_H + s->MIE_total_V);
+  ret +=  fprintf(f,  "    LF Totals H/V/Sum: %hu/%hu/%hu\n",  s->LF_total_H, s->LF_total_V, s->LF_total_H + s->LF_total_V);
+  ret +=  fprintf(f,  "    Aux/Global: %hu/%hu",  s->aux_total, s->global_total);
 
   return ret;
 

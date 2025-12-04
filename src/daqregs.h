@@ -156,6 +156,9 @@ DEF(scaler_max,       REG_RO(BASE, 0x07c))\
 DEF(gate_sel,         BF    (BASE, 0x080, 0, 3))\
 DEF(pps_gatelen,      BF    (BASE, 0x080, 16, 16))\
 DEF(gate_en,          REG    (BASE, 0x084))\
+DEF(mie_hvscaler,     REG_RO (BASE, 0x90))\
+DEF(lf_hvscaler,      REG_RO (BASE, 0x94))\
+DEF(aux_total,        REG_RO (BASE, 0x98))\
 DEF(leveltwo_base,    REG_RO (BASE, 0x0a0))\
 DEF(leveltwo_max,     REG_RO (BASE, 0x0fc))
 

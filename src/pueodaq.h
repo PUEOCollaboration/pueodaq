@@ -378,6 +378,13 @@ typedef struct pueo_daq_scalers
       uint32_t reserved;
     } map;
   }scalers;
+
+  uint16_t MIE_total_H;
+  uint16_t MIE_total_V;
+  uint16_t LF_total_H;
+  uint16_t LF_total_V;
+  uint16_t aux_total;
+  uint16_t global_total;
 } pueo_daq_scalers_t;
 
 
