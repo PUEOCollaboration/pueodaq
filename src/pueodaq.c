@@ -1844,7 +1844,7 @@ int pueo_daq_L1_stat_dump(FILE *f, const pueo_L1_stat_t * s)
    ret += fprintf(f,"AGC SCALE/OFFS: ");
    for (int i = 0; i < PUEO_NSURF_CHAN; i++)
    {
-     ret+= fprintf(f,"[%d:%x/%x] ", i,  s->agc_scale[i], s->agc_offset[i]);
+     ret+= fprintf(f,"[%d: %d/%d  ] ", i,  s->agc_scale[i], s->agc_offset[i]);
    }
    fprintf(f,"\n");
    return ret;
@@ -1963,14 +1963,14 @@ int pueo_daq_read_L1_stat(pueo_daq_t * daq, int link, int slot, pueo_L1_stat_t *
   if (read_incrementing_regs(daq, PUEO_L1_BEAMS, SURF_BASE(surf.link, surf.slot),   &surf_L1.scaler_base, (uint32_t*) scalers)) { r = 1; goto do_end;}
   if (read_surf_reg(daq, surf, &surf_L1.current_scaler_bank, &scaler_bank[1])) { r = 1; goto do_end; }
 
-  for (int i = 0; i < PUEO_NSURF_CHAN; i++)
-  {
-    uint32_t scale, offset;
-    read_based_reg(daq, SURF_BASE(surf.link, surf.slot)  + i * 1024, &surf_agc.scale, &scale);
-    read_based_reg(daq, SURF_BASE(surf.link, surf.slot)  + i * 1024, &surf_agc.offset, &offset);
-    stat->agc_scale[i] = scale;
-    stat->agc_offset[i] = offset;
-  }
+//  for (int i = 0; i < PUEO_NSURF_CHAN; i++)
+//  {
+//    uint32_t scale, offset;
+//    read_based_reg(daq, SURF_BASE(surf.link, surf.slot)  + i * 1024, &surf_agc.scale, &scale);
+//    read_based_reg(daq, SURF_BASE(surf.link, surf.slot)  + i * 1024, &surf_agc.offset, &offset);
+//    stat->agc_scale[i] = scale;
+//    stat->agc_offset[i] = offset;
+//  }
 
 
   for (i = 0; i < PUEO_L1_BEAMS; i++)
