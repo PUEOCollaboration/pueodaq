@@ -1734,7 +1734,7 @@ int pueo_daq_get_scalers(pueo_daq_t * daq, pueo_daq_scalers_t* s)
 
   struct timespec now;
   clock_gettime(CLOCK_REALTIME, &now);
-  if (DELTA_T(now, daq->cached_scalers.readout_time)  < daq->cfg.max_age)
+  if (daq->cfg.max_age > 0 && DELTA_T(now, daq->cached_scalers.readout_time)  < daq->cfg.max_age)
   {
     memcpy(s,&daq->cached_scalers, sizeof(*s));
     return 0;
@@ -1763,7 +1763,7 @@ int pueo_daq_read_L2_stat(pueo_daq_t * daq, pueo_L2_stat_t* s)
 
   struct timespec now;
   clock_gettime(CLOCK_REALTIME, &now);
-  if (DELTA_T(now, daq->cached_l2.readout_time_start)  < daq->cfg.max_age)
+  if (daq->cfg.max_age > 0 && DELTA_T(now, daq->cached_l2.readout_time_start)  < daq->cfg.max_age)
   {
     memcpy(s,&daq->cached_l2, sizeof(*s));
     return 0;
@@ -1923,7 +1923,7 @@ int pueo_daq_read_L1_stat(pueo_daq_t * daq, int link, int slot, pueo_L1_stat_t *
 {
   struct timespec now;
   clock_gettime(CLOCK_REALTIME, &now);
-  if (DELTA_T(now, daq->cached_l1[link][slot].readout_time_start)  < daq->cfg.max_age)
+  if (daq->cfg.max_age > 0 && DELTA_T(now, daq->cached_l1[link][slot].readout_time_start)  < daq->cfg.max_age)
   {
     memcpy(stat,&daq->cached_l1[link][slot], sizeof(*stat));
     return 0;
