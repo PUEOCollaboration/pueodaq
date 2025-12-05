@@ -117,7 +117,19 @@ typedef union pueo_daq_event_header
      uint32_t event_time;    //0xc
      uint32_t last_pps;      //0x10
      uint32_t llast_pps;     //0x14
-     uint8_t trigger_meta[32]; //0x18
+     union
+     {
+        uint8_t as_bytes[32]; //0x18
+        struct
+        {
+          struct
+          {
+            uint8_t surf_meta[7];
+            uint8_t tfio_meta;
+          }link[4];
+        } as_struct;
+     } trigger_meta;
+
      uint32_t current_dead;   //0x38
      uint32_t last_dead;      //0x3c
      uint32_t llast_dead;     //0x40
@@ -133,8 +145,19 @@ typedef union pueo_daq_event_header
      uint8_t v[PUEODAQ_MAX_HEADER_SIZE]; // reserve 1024 bytes (the maximum)
    } bytes;
 
-
 } pueo_daq_event_header_t;
+
+
+typedef struct pueo_daq_event_decoded_trigger_meta
+{
+  uint32_t l2_mask : 24;
+  uint32_t pps_flag : 1;
+  uint32_t soft_flag : 1;
+  uint32_t ext_flag : 1;
+} pueo_daq_decoded_trigger_meta_t;
+
+
+pueo_daq_decoded_trigger_meta_t pueo_daq_event_decode_trigger_meta(const pueo_daq_event_header_t *h);
 
 
 #define PUEO_DAQ_EVENT_HEADER_FORMAT\
@@ -432,6 +455,9 @@ typedef struct pueo_L2_stat
 
 int pueo_daq_L1_stat_dump(FILE *f, const pueo_L1_stat_t * s);
 int pueo_daq_L2_stat_dump(FILE *f, const pueo_L2_stat_t * s);
+
+// Disable via AGC mask.
+int pueo_daq_disable_channel_from_L1(pueo_daq_t * daq, int surf_link, int surf_slot, int channel, bool disable);
 
 int pueo_daq_set_biquad(pueo_daq_t *daq, int surf_link, int surf_slot, int channel, int bq_idx,  const pueo_biquad_t *bq);
 int pueo_daq_set_all_biquads(pueo_daq_t *daq, int bq_idx, const pueo_biquad_t *bq);

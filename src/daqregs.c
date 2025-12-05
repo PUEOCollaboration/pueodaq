@@ -1,6 +1,7 @@
 #include "pueodaq.h"
 #include "daqregs.h"
 #include <assert.h>
+#include "pueodaq-private.h"
 
 int read_based_reg(pueo_daq_t * daq, uint32_t base, const reg_t * reg, uint32_t * val)
 {
@@ -77,9 +78,9 @@ int write_based_reg(pueo_daq_t * daq, uint32_t base, const reg_t * reg, uint32_t
       return -1;
     }
 
-//    if (daq->cfg.debug > 1)  ("write_reg with readback, base=0x%x, addr = 0x%x, current=0x%x, val_before=0x%x\n", base, reg->addr, current, val);
+    if (daq->cfg.debug > 2)  ("write_reg with readback, base=0x%x, addr = 0x%x, current=0x%x, val_before=0x%x\n", base, reg->addr, current, val);
     val |= current & (~reg->mask);
-//    if (daq->cfg.debug > 1) printf("val after: 0x%x\n", val);
+    if (daq->cfg.debug > 2) printf("val after: 0x%x\n", val);
   }
 
   return pueo_daq_write(daq, base+reg->addr, val);

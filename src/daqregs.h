@@ -267,6 +267,7 @@ REG_GROUP(surf_L1, 0x8000, SURFL1_REGS);
   DEF( lt_accum,         REG_RO(BASE,0x0C))\
   DEF( scale,            REG_RO(BASE,0x10))\
   DEF( offset,           REG_RO(BASE,0x14))\
+  DEF( channel_disable,  BF  (BASE,0x18, 0, 1))\
   DEF( scale_delta,      REG_RO(BASE,0x40))\
   DEF( offset_delta,     REG_RO(BASE,0x44))
 
