@@ -1701,7 +1701,7 @@ int pueo_daq_set_L1_thresholds(pueo_daq_t * daq, int surf_link, int surf_slot, c
   return 0;
 }
 
-int pueo_daq_L1_masks(pueo_daq_t * daq, int link, int slot, uint64_t beam_mask)
+int pueo_daq_set_L1_masks(pueo_daq_t * daq, int link, int slot, uint64_t beam_mask)
 {
   return
   write_surf_reg(daq, SURF(link,slot), &surf_L1.lower_beam_mask, (~beam_mask) &0x3ff) ||
