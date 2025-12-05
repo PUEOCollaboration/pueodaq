@@ -1870,8 +1870,8 @@ do_end:
 
 int pueo_daq_set_L2_mask(pueo_daq_t * daq, uint32_t mask)
 {
-  mask=~mask; // TURF mask is inverted
-  mask&=0x3ffffff;
+  mask=~mask; // TURF mask is inverted compared to what I hthink of it as
+  mask&=0xcffffff;
   return write_turf_reg(daq, &turf_trig.mask, mask);
 }
 
@@ -1881,8 +1881,8 @@ int pueo_daq_set_L2_mask_by_2phi(pueo_daq_t * daq, uint16_t H, uint16_t V)
   uint32_t mask = (H & 0xfff) | ((V & 0xfff) <<12);
 
   //LF
-  mask |= (!!(H & 0x1000)) << 24;
-  mask |= (!!(V & 0x1000)) << 25;
+  mask |= (!!(H & 0x1000)) << 26;
+  mask |= (!!(V & 0x1000)) << 27;
 
   return pueo_daq_set_L2_mask(daq, mask);
 }
