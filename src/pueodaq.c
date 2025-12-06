@@ -1598,7 +1598,7 @@ int pueo_daq_scalers_dump(FILE *f, const pueo_daq_scalers_t * s)
 
   ret += fprintf(f,  "*** MIE Totals  H/V/Sum: %hu/%hu/%hu\n", s->MIE_total_H, s->MIE_total_V, s->MIE_total_H + s->MIE_total_V);
   ret +=  fprintf(f,  "    LF Totals H/V/Sum: %hu/%hu/%hu\n",  s->LF_total_H, s->LF_total_V, s->LF_total_H + s->LF_total_V);
-  ret +=  fprintf(f,  "    Aux/Global: %hu/%hu",  s->aux_total, s->global_total);
+  ret +=  fprintf(f,  "    Aux/Global: %hu/%hu\n",  s->aux_total, s->global_total);
 
   return ret;
 
@@ -1704,7 +1704,7 @@ int pueo_daq_set_L1_thresholds(pueo_daq_t * daq, int surf_link, int surf_slot, c
 int pueo_daq_set_L1_masks(pueo_daq_t * daq, int link, int slot, uint64_t beam_mask)
 {
   return
-  write_surf_reg(daq, SURF(link,slot), &surf_L1.lower_beam_mask, (~beam_mask) &0x3ff) ||
+  write_surf_reg(daq, SURF(link,slot), &surf_L1.lower_beam_mask, (~beam_mask) &0x3ffff) ||
   write_surf_reg(daq, SURF(link,slot), &surf_L1.upper_beam_mask, (1ull << 31) | (((~beam_mask) >> 18) & 0x3fffffff));
 }
 
@@ -1901,7 +1901,7 @@ int pueo_daq_bypass_all_biquads(pueo_daq_t * daq, int ibq)
 {
   for (int itfio = 0 ; itfio < 4; itfio++)
   {
-    for (int isurf = 0; isurf < 8; isurf++)
+    for (int isurf = 0; isurf < 7; isurf++)
     {
       if (daq->census.turfio[itfio].surfid[isurf] == 0)
       {
