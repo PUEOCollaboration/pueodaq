@@ -761,7 +761,14 @@ int pueo_daq_start(pueo_daq_t * daq)
         fprintf(stderr,"Couldn't write trig offset\n");
       }
     }
-    
+    if (daq->cfg.trigger.apply_holdoff)
+    {
+      if (write_turf_reg(daq, &turf_trig.holdoff, daq->cfg.trigger.holdoff))
+      {
+        fprintf(stderr,"Couldn't write trig holdoff\n");
+      }
+    }
+ 
   }
 
 
@@ -1464,6 +1471,7 @@ int pueo_daq_get_stats(pueo_daq_t * daq, pueo_daq_stats_t * st)
   event_count_reg_t counts;
   uint32_t pps_reg = 0;
   uint32_t offset;
+  uint32_t latency;
   holdoff_reg_t holdoff;
   if (
       read_turf_reg(daq, &turf_event.ndwords0, &st->turfio_words_recv[0]) ||
@@ -1484,6 +1492,7 @@ int pueo_daq_get_stats(pueo_daq_t * daq, pueo_daq_stats_t * st)
       read_turf_reg(daq, &turf_trig.holdoff_reg, &holdoff.as_uint)||
       read_turf_reg(daq, &turf_trig.running, &running)||
       read_turf_reg(daq, &turf_trig.offset, &offset)||
+      read_turf_reg(daq, &turf_trig.latency, &latency)||
       read_turf_reg(daq, &turf_event.event_in_reset, &in_reset)||
       read_turf_reg(daq, &turf_event.full_error0, &st->full_err[0])||
       read_turf_reg(daq, &turf_event.full_error1, &st->full_err[1])||
@@ -1754,14 +1763,14 @@ int pueo_daq_read_L1_stat(pueo_daq_t * daq, int link, int slot, pueo_L1_stat_t *
   if (read_incrementing_regs(daq, PUEO_L1_BEAMS, SURF_BASE(surf.link, surf.slot),   &surf_L1.scaler_base, (uint32_t*) scalers)) { r = 1; goto do_end;}
   if (read_surf_reg(daq, surf, &surf_L1.current_scaler_bank, &scaler_bank[1])) { r = 1; goto do_end; }
 
-//  for (int i = 0; i < PUEO_NSURF_CHAN; i++)
-//  {
-//    uint32_t scale, offset;
-//    read_based_reg(daq, SURF_BASE(surf.link, surf.slot)  + i * 1024, &surf_agc.scale, &scale);
-//    read_based_reg(daq, SURF_BASE(surf.link, surf.slot)  + i * 1024, &surf_agc.offset, &offset);
-//    stat->agc_scale[i] = scale;
-//    stat->agc_offset[i] = offset;
-//  }
+  for (int i = 0; i < PUEO_NSURF_CHAN; i++)
+  {
+    uint32_t scale, offset;
+    read_based_reg(daq, SURF_BASE(surf.link, surf.slot)  + i * 1024, &surf_agc.scale, &scale);
+    read_based_reg(daq, SURF_BASE(surf.link, surf.slot)  + i * 1024, &surf_agc.offset, &offset);
+    stat->agc_scale[i] = scale;
+    stat->agc_offset[i] = offset;
+  }
 
 
   for (i = 0; i < PUEO_L1_BEAMS; i++)
@@ -1923,14 +1932,14 @@ int pueo_daq_bypass_all_biquads(pueo_daq_t * daq, int ibq)
 
 int pueo_daq_disable_channel_from_L1(pueo_daq_t *daq, int link, int slot, int channel, bool disable)
 {
-  return write_based_reg(daq, SURF_BASE(link,slot) + channel * 1024, &surf_agc.channel_disable, disable ? 1: 0);
+  return write_based_reg(daq, SURF_BASE(link,slot) + channel * 1024, &surf_agc.channel_disable, disable ? 0: 1);
 }
 
 int pueo_daq_set_all_biquads(pueo_daq_t * daq, int ibq, const pueo_biquad_t * bq)
 {
   for (int itfio = 0 ; itfio < 4; itfio++)
   {
-    for (int isurf = 0; isurf < 8; isurf++)
+    for (int isurf = 0; isurf < 7; isurf++)
     {
       if (daq->census.turfio[itfio].surfid[isurf] == 0)
       {

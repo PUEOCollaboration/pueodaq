@@ -94,6 +94,8 @@ typedef struct pueo_daq_config
     uint16_t latency;
     bool apply_rundly;
     uint8_t  rundly;
+    bool apply_holdoff;
+    uint16_t holdoff;
   } trigger;
 
 
