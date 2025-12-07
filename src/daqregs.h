@@ -271,7 +271,7 @@ REG_GROUP(surf_L1, 0x8000, SURFL1_REGS);
   DEF( scale_delta,      REG_RO(BASE,0x40))\
   DEF( offset_delta,     REG_RO(BASE,0x44))
 
-REG_GROUP(surf_agc, 0x4000, SURFAGC_REGS);
+REG_GROUP(surf_agc, 0x8000 + 0x4000, SURFAGC_REGS);
 
 // Biquads
 // Channel index mask is 0x1C00 (bits [12:10])
@@ -286,7 +286,7 @@ REG_GROUP(surf_agc, 0x4000, SURFAGC_REGS);
   DEF( f_in_g_fir,       REG (BASE,0x18))\
   DEF( g_in_f_fir,       REG (BASE,0x1c))
 
-REG_GROUP(surf_bq, 0x6000, SURFBQ_REGS);
+REG_GROUP(surf_bq, 0x8000 + 0x6000, SURFBQ_REGS);
 
 
 typedef struct pueo_daq pueo_daq_t;
