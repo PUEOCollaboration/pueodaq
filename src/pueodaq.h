@@ -446,6 +446,7 @@ typedef struct pueo_L1_stat
   uint8_t surf_link : 2;
   uint8_t surf_slot : 3;
   uint8_t flags;
+  uint32_t surf_holdoff;
 } pueo_L1_stat_t;
 
 typedef struct pueo_L2_stat
@@ -466,6 +467,7 @@ int pueo_daq_set_all_biquads(pueo_daq_t *daq, int bq_idx, const pueo_biquad_t *b
 int pueo_daq_bypass_biquad(pueo_daq_t *daq, int surf_link, int surf_slot, int channel, int bq_idx);
 int pueo_daq_bypass_all_biquads(pueo_daq_t *daq, int ibq);
 
+int pueo_daq_set_surf_holdoff(pueo_daq_t * daq, int surf_link, int surf_slot, uint32_t holdoff);
 
 int pueo_daq_read_L1_stat(pueo_daq_t * daq, int surf_link, int surf_slot, pueo_L1_stat_t * stat);
 int pueo_daq_read_L2_stat(pueo_daq_t * daq, pueo_L2_stat_t * stat);

@@ -1634,7 +1634,7 @@ int pueo_daq_pps_setup(pueo_daq_t *daq, bool enable, uint16_t offset)
 int pueo_daq_L1_stat_dump(FILE *f, const pueo_L1_stat_t * s)
 {
    int ret = 0;
-   ret+= fprintf(f,"L1 stat dump for SURF Link %u, slot %u @%lu.%09ld (dur %hu ms):\n" , s->surf_link, s->surf_slot, s->readout_time_start.tv_sec, s->readout_time_start.tv_nsec, s->ms_elapsed);
+   ret+= fprintf(f,"L1 stat dump for SURF Link %u, slot %u @%lu.%09ld (dur %hu ms), surf_holdoff: %x:\n" , s->surf_link, s->surf_slot, s->readout_time_start.tv_sec, s->readout_time_start.tv_nsec, s->ms_elapsed, s->surf_holdoff);
    ret+= fprintf(f,"==BM=====THRESHOLD/PSEUDOTHRESHOLD====== SCALER/PSEUDOSCALER====INMASK==BANK\n");
    for (int i = 0; i < PUEO_L1_BEAMS; i++)
    {
@@ -1730,7 +1730,7 @@ int pueo_daq_read_L1_stat(pueo_daq_t * daq, int link, int slot, pueo_L1_stat_t *
   }
 
 
-  surf_t surf = SURF(link,slot);
+  surf_t the_surf = SURF(link,slot);
   int r = 0;
   int i = 0;
   memcpy(&stat->readout_time_start, &now, sizeof(now));
@@ -1741,8 +1741,8 @@ int pueo_daq_read_L1_stat(pueo_daq_t * daq, int link, int slot, pueo_L1_stat_t *
   uint32_t lower_mask = 0;
   uint32_t upper_mask = 0;
 
-  if (read_surf_reg(daq, surf, &surf_L1.lower_beam_mask, &lower_mask)) { r =1; goto do_end ;}
-  if (read_surf_reg(daq, surf, &surf_L1.upper_beam_mask, &upper_mask)) { r =1; goto do_end ;}
+  if (read_surf_reg(daq, the_surf, &surf_L1.lower_beam_mask, &lower_mask)) { r =1; goto do_end ;}
+  if (read_surf_reg(daq, the_surf, &surf_L1.upper_beam_mask, &upper_mask)) { r =1; goto do_end ;}
 
   struct timespec end;
   uint64_t complete_mask = upper_mask & 0x3fffffff;
@@ -1757,17 +1757,17 @@ int pueo_daq_read_L1_stat(pueo_daq_t * daq, int link, int slot, pueo_L1_stat_t *
 
 
 
-  if (read_incrementing_regs(daq, PUEO_L1_BEAMS, SURF_BASE(surf.link, surf.slot),   &surf_L1.threshold_base, thresholds)) { r = 1; goto do_end;}
-  if (read_incrementing_regs(daq, PUEO_L1_BEAMS, SURF_BASE(surf.link, surf.slot),   &surf_L1.pseudothreshold_base, pseudo_thresholds)) { r = 1; goto do_end;}
-  if (read_surf_reg(daq, surf, &surf_L1.current_scaler_bank, &scaler_bank[0])) { r = 1; goto do_end; }
-  if (read_incrementing_regs(daq, PUEO_L1_BEAMS, SURF_BASE(surf.link, surf.slot),   &surf_L1.scaler_base, (uint32_t*) scalers)) { r = 1; goto do_end;}
-  if (read_surf_reg(daq, surf, &surf_L1.current_scaler_bank, &scaler_bank[1])) { r = 1; goto do_end; }
+  if (read_incrementing_regs(daq, PUEO_L1_BEAMS, SURF_BASE(the_surf.link, the_surf.slot),   &surf_L1.threshold_base, thresholds)) { r = 1; goto do_end;}
+  if (read_incrementing_regs(daq, PUEO_L1_BEAMS, SURF_BASE(the_surf.link, the_surf.slot),   &surf_L1.pseudothreshold_base, pseudo_thresholds)) { r = 1; goto do_end;}
+  if (read_surf_reg(daq, the_surf, &surf_L1.current_scaler_bank, &scaler_bank[0])) { r = 1; goto do_end; }
+  if (read_incrementing_regs(daq, PUEO_L1_BEAMS, SURF_BASE(the_surf.link, the_surf.slot),   &surf_L1.scaler_base, (uint32_t*) scalers)) { r = 1; goto do_end;}
+  if (read_surf_reg(daq, the_surf, &surf_L1.current_scaler_bank, &scaler_bank[1])) { r = 1; goto do_end; }
 
   for (int i = 0; i < PUEO_NSURF_CHAN; i++)
   {
     uint32_t scale, offset;
-    read_based_reg(daq, SURF_BASE(surf.link, surf.slot)  + i * 1024, &surf_agc.scale, &scale);
-    read_based_reg(daq, SURF_BASE(surf.link, surf.slot)  + i * 1024, &surf_agc.offset, &offset);
+    read_based_reg(daq, SURF_BASE(the_surf.link, the_surf.slot)  + i * 1024, &surf_agc.scale, &scale);
+    read_based_reg(daq, SURF_BASE(the_surf.link, the_surf.slot)  + i * 1024, &surf_agc.offset, &offset);
     stat->agc_scale[i] = scale;
     stat->agc_offset[i] = offset;
   }
@@ -1783,6 +1783,12 @@ int pueo_daq_read_L1_stat(pueo_daq_t * daq, int link, int slot, pueo_L1_stat_t *
     stat->beams[i].scaler_bank_before = scaler_bank[0];
     stat->beams[i].scaler_bank_after = scaler_bank[1];
     stat->beams[i].in_beam_mask = !( complete_mask & (1ull << i));
+  }
+
+  if (read_based_reg(daq, SURF_BASE(link,slot), &surf.surf_holdoff, &stat->surf_holdoff))
+  {
+    r = 1;
+    goto do_end;
   }
 
 do_end:
@@ -1957,3 +1963,11 @@ int pueo_daq_set_all_biquads(pueo_daq_t * daq, int ibq, const pueo_biquad_t * bq
   }
   return 0;
 }
+
+int pueo_daq_set_surf_holdoff(pueo_daq_t *daq, int link, int slot, uint32_t holdoff)
+{
+  return write_based_reg(daq, SURF_BASE(link,slot), &surf.surf_holdoff, holdoff);
+}
+
+
+

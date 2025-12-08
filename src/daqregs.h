@@ -226,6 +226,7 @@ DEF (sysref_phase,REG_RO (BASE,0x14)) \
 DEF (cal_freeze,      BF (BASE,0x18,0,8)) \
 DEF (cal_frozen,   BF_RO (BASE,0x18,8,8)) \
 DEF (adc_sigdet,   BF_RO (BASE,0x18,16,8)) \
+DEF (surf_holdoff,   BF(BASE,0x20,0,24)) \
 
 REG_GROUP(surf, 0x0, SURF_REGS);
 
