@@ -483,3 +483,19 @@ int pueo_daq_set_L2_mask(pueo_daq_t * daq, uint32_t mask);
 // 0-12 are MI, 13 is LF , 1 means enabled (i.e. triggering), 0 means not
 int pueo_daq_set_L2_mask_by_2phi(pueo_daq_t * daq, uint16_t H, uint16_t V);
 
+typedef struct pueo_daq_corruption_detector_output
+{
+  struct
+  {
+    struct
+    {
+      bool is_present; //did we find it in our census?
+      uint16_t decrement_counter; // only for non-present channels
+      uint16_t n_above_level;
+    } surf[7];
+  } turfio[4];
+  uint16_t level;
+} pueo_daq_corruption_detector_output_t;
+
+void pueo_daq_check_corruption(pueo_daq_t * daq, const pueo_daq_event_data_t * event, uint16_t level_threshold, pueo_daq_corruption_detector_output_t * out);
+
