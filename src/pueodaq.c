@@ -1472,6 +1472,7 @@ int pueo_daq_get_stats(pueo_daq_t * daq, pueo_daq_stats_t * st)
   uint32_t pps_reg = 0;
   uint32_t offset;
   uint32_t latency;
+  uint32_t photoshutter_reg;
   holdoff_reg_t holdoff;
   if (
       read_turf_reg(daq, &turf_event.ndwords0, &st->turfio_words_recv[0]) ||
@@ -1498,6 +1499,7 @@ int pueo_daq_get_stats(pueo_daq_t * daq, pueo_daq_stats_t * st)
       read_turf_reg(daq, &turf_event.full_error1, &st->full_err[1])||
       read_turf_reg(daq, &turf_event.full_error2, &st->full_err[2])||
       read_turf_reg(daq, &turf_trig.pps_reg, &pps_reg) ||
+      read_turf_reg(daq, &turf_trig.photo_reg, &photoshutter_reg) ||
       read_turf_reg(daq, &turf_trig.mask, &st->trigger_mask)
      )
   {
@@ -1513,10 +1515,13 @@ int pueo_daq_get_stats(pueo_daq_t * daq, pueo_daq_stats_t * st)
   st->running = running;
   st->holdoff =  holdoff.as_holdoff.holdoff;
   st->turf_err = holdoff.as_holdoff.turf_err;
+  st->latency = latency;
   st->surf_err = holdoff.as_holdoff.surf_err;
   st->leveltwo_logic = holdoff.as_holdoff.leveltwo_logic;
   st->rf_trig_en = holdoff.as_holdoff.rf_trig_en;
   st->in_reset = in_reset;
+  st->photoshutter_enabled = !!(photoshutter_reg & (1 <<16));
+  st->photoshutter_prescale = photoshutter_reg & 0xff;
 
   return 0;
 }
