@@ -45,12 +45,12 @@ int pueo_daq_set_biquad(pueo_daq_t *daq, int surf_link, int surf_slot, int chann
   write_based_reg(daq, base, &surf_bq.pole_iir_casc, bq->C[1]) ||
   write_based_reg(daq, base, &surf_bq.pole_iir_casc, bq->C[0]) ||
 
-  write_based_reg(daq, base, &surf_bq.inc_comp_casc, bq->a1) ||
-  write_based_reg(daq, base, &surf_bq.inc_comp_casc, bq->a2) ||
-  write_based_reg(daq, base, &surf_bq.inc_comp_casc, bq->a1) ||
-  write_based_reg(daq, base, &surf_bq.inc_comp_casc, bq->a2) ||
+  write_based_reg(daq, base, &surf_bq.inc_comp_casc, -bq->a1) ||
+  write_based_reg(daq, base, &surf_bq.inc_comp_casc, -bq->a2) ||
+  write_based_reg(daq, base, &surf_bq.inc_comp_casc, -bq->a1) ||
+  write_based_reg(daq, base, &surf_bq.inc_comp_casc, -bq->a2) ||
 
-  write_based_reg(daq, base, &surf_bq.update_control, 0x10001) ||
+  write_based_reg(daq, base, &surf_bq.update_control, 0x00001) ||
   write_based_reg(daq, base, &surf_bq.update_control, 0x810000);
 
 //  daq->cfg.debug = old_debug;
