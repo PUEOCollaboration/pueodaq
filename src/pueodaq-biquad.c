@@ -1,6 +1,7 @@
 #include "pueodaq.h"
 #include "pueo-biquad-coeffs.h"
 #include "daqregs.h"
+#include "pueo-biquad-limits.h"
 #include "pueodaq-private.h"
 
 #define BIQUAD_BASE(l, s, c, b)   ( SURF_BASE(l,s) + 0x80 * (b & 1) + 0x400 * (c & 0x7))
