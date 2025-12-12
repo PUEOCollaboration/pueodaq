@@ -1734,6 +1734,12 @@ int pueo_daq_read_L1_stat(pueo_daq_t * daq, int link, int slot, pueo_L1_stat_t *
     return 0;
   }
 
+  //check if the SURF exists
+  if (!daq->census.turfio[link].surfid[slot])
+  {
+    memset(stat,0,sizeof(*stat));
+    return 0;
+  }
 
   surf_t the_surf = SURF(link,slot);
   int r = 0;
