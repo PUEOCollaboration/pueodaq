@@ -278,7 +278,7 @@ REG_GROUP(surf_agc, 0x8000 + 0x4000, SURFAGC_REGS);
 // Channel index mask is 0x1C00 (bits [12:10])
 // Biquad (0/1) selection mask is 0x800 (bit [7])
 #define SURFBQ_REGS(DEF,BASE) \
-  DEF( update_control,   BF_RO (BASE,0x00, 0, 1))\
+  DEF( update_control,   REG (BASE,0x00))\
   DEF( zero_fir_casc,    REG (BASE,0x04))\
   DEF( pole_iir_casc,    REG (BASE,0x08))\
   DEF( inc_comp_casc,    REG (BASE,0x0C))\
