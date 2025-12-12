@@ -1927,7 +1927,7 @@ int pueo_daq_bypass_all_biquads(pueo_daq_t * daq, int ibq)
 {
   for (int itfio = 0 ; itfio < 4; itfio++)
   {
-    for (int isurf = 0; isurf < 7; isurf++)
+    for (int isurf = 0; isurf < 6; isurf++)
     {
       if (daq->census.turfio[itfio].surfid[isurf] == 0)
       {
@@ -1956,7 +1956,7 @@ int pueo_daq_set_all_biquads(pueo_daq_t * daq, int ibq, const pueo_biquad_t * bq
 {
   for (int itfio = 0 ; itfio < 4; itfio++)
   {
-    for (int isurf = 0; isurf < 7; isurf++)
+    for (int isurf = 0; isurf < 6; isurf++)
     {
       if (daq->census.turfio[itfio].surfid[isurf] == 0)
       {
