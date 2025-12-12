@@ -15,9 +15,9 @@ int pueo_daq_bypass_biquad(pueo_daq_t * daq, int surf_link, int surf_slot, int c
 int pueo_daq_set_biquad(pueo_daq_t *daq, int surf_link, int surf_slot, int channel, int bq_idx, const pueo_biquad_t *bq)
 {
   uint32_t base = BIQUAD_BASE(surf_link, surf_slot, channel, bq_idx);
-  //printf("USING BASE %x for SURF L%d S%d CH%d BQ%d\n", base, surf_link, surf_slot, channel, bq_idx);
-  //int old_debug = daq->cfg.debug;
-  //daq->cfg.debug = 10;
+//  printf("USING BASE %x for SURF L%d S%d CH%d BQ%d\n", base, surf_link, surf_slot, channel, bq_idx);
+//  int old_debug = daq->cfg.debug;
+//  daq->cfg.debug = 10;
 
   int ret = write_based_reg(daq, base, &surf_bq.zero_fir_casc, bq->B) ||
   write_based_reg(daq, base, &surf_bq.zero_fir_casc, bq->A) ||
